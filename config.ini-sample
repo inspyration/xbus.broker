@@ -1,0 +1,12 @@
+[main]
+
+[logging]
+configfile = /some/full/path/to/logging.ini
+
+[database]
+; the database uri where we will store account names/passwords
+sqlalchemy.dburi = postgres://user:password@servername:port/database
+
+[zmq]
+; the front socket where emitters will send data
+frontsocket = tcp://127.0.0.1:1984
