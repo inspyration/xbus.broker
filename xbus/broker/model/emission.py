@@ -21,12 +21,11 @@ emitter = Table(
     Column(
         'profile_id',
         UUID,
-        ForeignKey('emitter_profile.id',  ondelete='CASCADE'),
+        ForeignKey('emitter_profile.id', ondelete='CASCADE'),
         nullable=False
     ),
     Column('last_emit', DateTime),
 )
-
 
 emitter_profile = Table(
     'emitter_profile', metadata,

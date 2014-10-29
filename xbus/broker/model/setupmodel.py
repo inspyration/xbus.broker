@@ -42,7 +42,7 @@ def setup_usergroupperms(engine):
         )
     )
 
-    #fetch group_id
+    # fetch group_id
     managers_group_id = engine.execute(
         group.select().where(
             group.c.group_name == u'managers'

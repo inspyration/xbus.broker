@@ -18,7 +18,6 @@ from xbus.broker.model import user_group_table
 
 
 def get_groupnames_for_userid(dbengine, userid):
-
     def _return_groups(group_rows):
         return [g[0] for g in group_rows]
 
@@ -62,7 +61,6 @@ def get_group_id_by_name(dbengine, group_name):
 
 
 def remove_user_from_group(dbengine, user_id, group):
-
     def _done(res):
         return res
 
@@ -88,7 +86,6 @@ def add_user_in_group(dbengine, user_id, group):
         return
 
     def _groupid_available(group_id, dbengine, user_id):
-
         # insert into where not exists...
 
         # first create a "select where not exist"
@@ -229,6 +226,7 @@ def update_user(dbengine, userid, user_dict):
     if user_dict contains a password it must be in clear because
     this  helper will take care of encryption
     """
+
     def _update_done(*args, **kwargs):
         return
 
@@ -254,6 +252,7 @@ def create_user(dbengine, user_dict):
     the password must be in clear text inside the user_dict because
     this helper will take care of encryption
     """
+
     def _create_done(*args, **kwargs):
         return
 
@@ -276,6 +275,7 @@ def get_principals(dbengine, userid):
     @param userid: a integer representing the internal ID of a User
     @param userid: int
     """
+
     def _result_principal(result):
         d = result.fetchall()
         d.addCallback(_principals_values)

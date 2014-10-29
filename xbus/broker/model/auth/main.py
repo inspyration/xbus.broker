@@ -63,7 +63,6 @@ user = Table(
     Column("created", DateTime, default=datetime.datetime.now),
 )
 
-
 permission = Table(
     'permission', metadata,
     Column("permission_id", Integer, autoincrement=True, primary_key=True),
