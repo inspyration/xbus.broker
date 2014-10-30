@@ -361,11 +361,26 @@ def validate_password(password1, password2):
     @type password2: unicode object
     """
     algorithm = 'salted_sha1'
+
+    if isinstance(password1, str):
+        # if password is still a string (as opposed to bytes) then
+        # we convert it to bytes
+        password1_8bit = password1.encode('UTF-8')
+    else:
+        password1_8bit = password1
+
+    if isinstance(password2, str):
+        # if password is still a string (as opposed to bytes) then
+        # we convert it to bytes
+        password2_8bit = password2.encode('UTF-8')
+    else:
+        password2_8bit = password2
+
     if "salted_sha1" == algorithm:
         hashed_pass = sha1()
-        hashed_pass.update(password1 + password2[:40])
+        hashed_pass.update(password1_8bit + password2_8bit[:40])
 
-        return password2[40:] == hashed_pass.hexdigest()
+        return password2_8bit[40:] == hashed_pass.hexdigest().encode('utf-8')
 
     else:
         ValueError('Only salted_sha1 is implemented, not "%s"' % algorithm)

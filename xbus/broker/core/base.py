@@ -38,6 +38,8 @@ class XbusBrokerBase(rpc.AttrHandler):
     @asyncio.coroutine
     def save_key(self, key: str, info: str) -> bool:
         try:
+            # unicode objects must be encoded before hashing so we encode to
+            # utf-8
             yield from self.redis_connection.execute(
                 'set', key, info
             )

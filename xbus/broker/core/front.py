@@ -47,13 +47,13 @@ class XbusBrokerFront(XbusBrokerBase):
          the password that must match your login
 
         :return:
-         a unicode token that can be used during the session
+         a byte token that can be used during the session
         """
 
         emitter_row = yield from self.find_emitter_by_login(login)
         emitter_id, emitter_pwd, emitter_profile_id = emitter_row
 
-        if validate_password(emitter_pwd, password):
+        if validate_password(password, emitter_pwd):
             token = self.new_token()
             info = {'id': emitter_id, 'login': login,
                     'profile_id': emitter_profile_id}
