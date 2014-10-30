@@ -9,11 +9,11 @@ from xbus.broker.model.auth.main import group
 from xbus.broker.model.auth.main import permission
 from xbus.broker.model.auth.main import user_group_table
 from xbus.broker.model.auth.main import group_permission_table
+from xbus.broker.model.auth.main import role
 from xbus.broker.model.auth.helpers import gen_password
 from xbus.broker.model.auth.helpers import validate_password
 from xbus.broker.model.setupmodel import setup_app
 from xbus.broker.model.service import service
-from xbus.broker.model.service import role
 from xbus.broker.model.event import event_type
 from xbus.broker.model.event import event_node
 from xbus.broker.model.event import event_node_rel

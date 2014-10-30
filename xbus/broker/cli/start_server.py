@@ -25,7 +25,10 @@ def get_engine(config):
     return dbengine
 
 
-def start_server():
+def start_server() -> None:
+    """A helper function that is used to start the broker server
+    :return: None
+    """
     signal.signal(signal.SIGINT, signal_handler)
     config = get_config()
     socket_name = config.get('zmq', 'frontsocket')
