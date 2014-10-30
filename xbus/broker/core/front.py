@@ -8,7 +8,6 @@ from aiozmq import rpc
 from sqlalchemy import func
 from sqlalchemy.sql import select
 
-from xbus.broker.model import user
 from xbus.broker.model import role
 from xbus.broker.model import validate_password
 from xbus.broker.model import emitter
@@ -53,12 +52,14 @@ class XbusBrokerFront(XbusBrokerBase):
 
         emitter_row = yield from self.find_emitter_by_login(login)
         emitter_id, emitter_pwd, emitter_profile_id = emitter_row
+
         if validate_password(emitter_pwd, password):
             token = self.new_token()
             info = {'id': emitter_id, 'login': login,
                     'profile_id': emitter_profile_id}
             info_json = json.dumps(info)
             yield from self.save_key(token, info_json)
+
         else:
             token = ""
 
@@ -309,11 +310,11 @@ def get_frontserver(engine_callback, config, socket):
     the front part of Xbus
 
     :param engine_callback:
-     the engine constructor we will be to "yield from" to get a real dbengine
+     the engine constructor we will "yield from" to get a real dbengine
 
     :param config:
      the application configuration instance
-     :class:`configparser.ConfigParser` it MUST contain a section redis and
+     :class:`configparser.ConfigParser` it MUST contain a `redis` section and
      two keys: 'host' and 'port'
 
     :param socket:
