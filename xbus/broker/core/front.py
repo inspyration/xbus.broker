@@ -17,6 +17,17 @@ from xbus.broker.core import XbusBrokerBase
 
 
 class XbusBrokerFront(XbusBrokerBase):
+    """the XbusBrokerFront is in charge of handling emitters on a specific 0mq
+    socket. It implements login/logout & new_envelop, new_event
+
+    Before you can call any useful methods on the XbusBrokerFront you'll need
+    to obtain a token through the login() call. Once you have a token you will
+    need to give it to all subsequent calls.
+
+    If you have finished your session you SHOULD call the logout() method.
+    This is important in order to protect yourself. Calling logout will
+    invalidate the token and make sure no one can reuse it ever.
+    """
 
     @rpc.method
     def remote_add(self, arg1: int, arg2: int) -> int:
