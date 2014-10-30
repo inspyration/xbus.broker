@@ -66,7 +66,7 @@ class XbusBrokerFront(rpc.AttrHandler):
 
     @rpc.method
     @asyncio.coroutine
-    def logout(self, token: str) -> None:
+    def logout(self, token: str):
         """When you are done using the broker you should call this method to
         make sure your token is destroyed and no one can reuse it
 
