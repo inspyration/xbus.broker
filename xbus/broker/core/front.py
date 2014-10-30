@@ -35,16 +35,6 @@ class XbusBrokerFront(XbusBrokerBase):
     """
 
     @rpc.method
-    def remote_add(self, arg1: int, arg2: int) -> int:
-        return arg1 + arg2
-
-    @rpc.method
-    @asyncio.coroutine
-    def list_users(self) -> list:
-        users = yield from self.find_users()
-        return users
-
-    @rpc.method
     @asyncio.coroutine
     def login(self, login: str, password: str) -> str:
         """Before doing anything useful you'll need to login into the broker
@@ -82,6 +72,7 @@ class XbusBrokerFront(XbusBrokerBase):
 
         :param token:
          the token you want to invalidate
+
         :return:
          True if successful, False otherwise
         """
@@ -91,11 +82,13 @@ class XbusBrokerFront(XbusBrokerBase):
     @rpc.method
     @asyncio.coroutine
     def start_envelope(self, token: str) -> str:
-        # lookup the emitters table and find a matching "login"
         """Start a new envelope.
 
         :param token:
-         the emitter's connection token
+         the emitter's connection token, obtained from the
+         :meth:`.XbusBrokerFront.login` method which is exposed on the same
+         0mq socket.
+
         :return:
          The UUID of the new envelope if successful, an empty string otherwise
         """
@@ -104,6 +97,7 @@ class XbusBrokerFront(XbusBrokerBase):
             return ""
 
         try:
+            # lookup the emitters table and find a matching "login"
             emitter_info = json.loads(emitter_json)
             emitter_id = emitter_info['id']
         except (ValueError, SyntaxError, KeyError):
@@ -122,14 +116,24 @@ class XbusBrokerFront(XbusBrokerBase):
     @asyncio.coroutine
     def start_event(self, token: str, envelope_id: str,
                     event_name: str, estimate: int) -> str:
-        """Start a new event.
+        """Start a new event inside an envelop. Conceptually an event is the
+        container of items (which are emitted using :meth:`.XbusBrokerFront
+        .login` method on the same 0mq socket. An event is also contained
+        inside an envelope with other events potentially of different types.
 
         :param token:
-         the emitter's connection token
+         the emitter's connection token, obtained from the
+         :meth:`.XbusBrokerFront.login` method which is exposed on the same
+         0mq socket.
+
         :param envelope_id:
-         the UUID of an envelope opened by the emitter
+         the UUID of an envelope previously opened by the emitter using the
+         :meth:`.XbusBrokerFront.start_envelope` method which is exposed on
+         the same 0mq socket.
+
         :param event_name:
          the name of the event's type
+
         :return:
          The UUID of the new event if successful, an empty string otherwise
         """
@@ -179,15 +183,24 @@ class XbusBrokerFront(XbusBrokerBase):
         """Send an item through XBUS.
 
         :param token:
-         the emitter's connection token
+         the emitter's connection token, obtained from the
+         :meth:`.XbusBrokerFront.login` method which is exposed on the same
+         0mq socket.
+
         :param envelope_id:
-         the UUID of the envelope
+         the UUID of an envelope previously opened by the emitter using the
+         :meth:`.XbusBrokerFront.start_envelope` method which is exposed on
+         the same 0mq socket.
+
         :param event_id:
          the UUID of the event
+
         :param index:
          the item index
+
         :param data:
          the item data
+
         :return:
          True if successful, False otherwise
         """
@@ -288,16 +301,6 @@ class XbusBrokerFront(XbusBrokerBase):
 
             res = yield from conn.execute(query)
             return res[0]
-
-    @asyncio.coroutine
-    def find_users(self):
-        with (yield from self.dbengine) as conn:
-            res = yield from conn.execute(user.select())
-            users = []
-            for row in res:
-                users.append(("%.32x" % row.user_id, row.user_name))
-
-            return users
 
 
 @asyncio.coroutine

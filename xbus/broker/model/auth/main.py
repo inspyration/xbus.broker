@@ -71,7 +71,7 @@ permission = Table(
 )
 
 # the role is what every worker or consumer needs in order to be able to login
-# into the broker.
+# into the broker backend.
 role = Table(
     'role', metadata,
     Column('id', UUID, default=uuid4, primary_key=True),
@@ -83,6 +83,7 @@ role = Table(
     Column('last_logged', DateTime),
 )
 
+# the emitter is designed to be able to log into the  broker frontend.
 emitter = Table(
     'emitter', metadata,
     Column('id', UUID, default=uuid4, primary_key=True),
