@@ -6,6 +6,9 @@ from aiozmq import rpc
 
 
 class XbusBrokerBase(rpc.AttrHandler):
+    """The XbusBrokerBase is the boilerplate code we need for both our
+    broker front and broker back (ie: initialize redis etc...)
+    """
 
     def __init__(self, dbengine):
         self.dbengine = dbengine
