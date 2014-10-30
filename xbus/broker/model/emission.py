@@ -17,3 +17,12 @@ emitter_profile = Table(
     Column("display_name", Unicode(255)),
     Column('description', Text),
 )
+
+emitter_profile_event_type_rel = Table(
+    'emitter_profile_event_type_rel', metadata,
+    Column('event_id', UUID, ForeignKey('event_type.id', ondelete='CASCADE'),
+           primary_key=True),
+    Column('profile_id', UUID,
+           ForeignKey('emitter_profile.id', ondelete='CASCADE'),
+           primary_key=True),
+)

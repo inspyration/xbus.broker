@@ -24,3 +24,4 @@ devdata.db
 .project
 .pydevproject
 .settings
+*.orig

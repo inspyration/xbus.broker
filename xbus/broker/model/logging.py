@@ -9,6 +9,8 @@ from sqlalchemy import Column
 from sqlalchemy import Enum
 from sqlalchemy import DateTime
 from sqlalchemy import Integer
+from sqlalchemy import LargeBinary
+from sqlalchemy import func
 
 from sqlalchemy.types import Text
 
@@ -25,7 +27,8 @@ envelope = Table(
            nullable=False),
     Column('state', Enum(*ENVELOPE_STATES, name='envelope_state'),
            nullable=False),
-    Column('posted_date', DateTime, nullable=False),
+    Column('posted_date', DateTime, nullable=False,
+           default=func.localtimestamp),
     Column('done_date', DateTime),
 )
 
@@ -56,5 +59,12 @@ event_error = Table(
            ForeignKey('service.id', ondelete='CASCADE')),
     Column('items', Text),
     Column('message', Text),
-    Column('error_date', DateTime, nullable=False),
+    Column('error_date', DateTime, nullable=False, default=func.localtimestamp)
+)
+
+item = Table(
+    'item', metadata,
+    Column('event_id', UUID, nullable=False, primary_key=True),
+    Column('index', Integer, nullable=False, primary_key=True),
+    Column('data', LargeBinary),
 )

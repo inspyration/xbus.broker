@@ -2,7 +2,7 @@
 __author__ = 'faide'
 
 import aioredis
-import json
+import uuid
 import asyncio
 
 from aiozmq import rpc
@@ -23,20 +23,44 @@ class XbusBrokerBase(rpc.AttrHandler):
             (redis_host, redis_port)
         )
 
-    @asyncio.coroutine
-    def create_token(self, token: bytes, info: dict):
-        yield from self.redis_connection.execute(
-            'set', 'tok:' + token, json.dumps(info)
-        )
+    @staticmethod
+    def new_token() -> str:
+        return uuid.uuid4().hex
+
+    @staticmethod
+    def new_envelope() -> str:
+        return uuid.uuid4().hex
+
+    @staticmethod
+    def new_event() -> str:
+        return uuid.uuid4().hex
 
     @asyncio.coroutine
-    def get_token_info(self, token: bytes) -> dict:
-
-        info = yield from self.redis_connection.execute(
-            'get', 'tok:' + token
-        )
-        if info:
-            return json.loads(info)
+    def save_key(self, key: str, info: str) -> bool:
+        try:
+            yield from self.redis_connection.execute(
+                'set', key, info
+            )
+        except (aioredis.ReplyError, aioredis.ProtocolError):
+            return False
+        return True
 
     @asyncio.coroutine
-    def destroy_token(self, token: bytes):
+    def get_key_info(self, key: str) -> str:
+        try:
+            info = yield from self.redis_connection.execute(
+                'get', key
+            )
+        except (aioredis.ReplyError, aioredis.ProtocolError):
+            return None
+        return info
+
+    @asyncio.coroutine
+    def destroy_key(self, key: str) -> bool:
+        try:
+            yield from self.redis_connection.execute(
+                'del', key
+            )
+        except (aioredis.ReplyError, aioredis.ProtocolError):
+            return False
+        return True
