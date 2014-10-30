@@ -5,7 +5,7 @@ import asyncio
 from aiopg.sa import create_engine
 
 from xbus.broker.cli import get_config
-from xbus.broker.core import frontserver
+from xbus.broker.core import get_frontserver
 from xbus.broker.core import prepare_event_loop
 import signal
 import sys
@@ -35,4 +35,4 @@ def start_server() -> None:
     prepare_event_loop()
 
     asyncio.get_event_loop().run_until_complete(
-        frontserver(get_engine, config, socket_name))
+        get_frontserver(get_engine, config, socket_name))

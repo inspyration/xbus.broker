@@ -3,8 +3,6 @@ __author__ = 'faide'
 
 import uuid
 import asyncio
-import aiozmq
-import aioredis
 import json
 from aiozmq import rpc
 
@@ -15,22 +13,10 @@ from xbus.broker.model import role
 from xbus.broker.model import validate_password
 from xbus.broker.model import emitter
 
-
-def prepare_event_loop():
-    asyncio.set_event_loop_policy(aiozmq.ZmqEventLoopPolicy())
+from xbus.broker.core import XbusBrokerBase
 
 
-class XbusBrokerFront(rpc.AttrHandler):
-
-    def __init__(self, dbengine):
-        self.dbengine = dbengine
-        self.redis_connection = None
-        super(rpc.AttrHandler, self).__init__()
-
-    def prepare_redis(self, redis_host, redis_port):
-        self.redis_connection = yield from aioredis.create_connection(
-            (redis_host, redis_port)
-        )
+class XbusBrokerFront(XbusBrokerBase):
 
     @rpc.method
     def remote_add(self, arg1: int, arg2: int) -> int:
@@ -118,7 +104,7 @@ class XbusBrokerFront(rpc.AttrHandler):
 
 
 @asyncio.coroutine
-def frontserver(engine_callback, config, socket):
+def get_frontserver(engine_callback, config, socket):
     dbengine = yield from engine_callback(config)
     broker = XbusBrokerFront(dbengine)
 
