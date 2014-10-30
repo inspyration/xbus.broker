@@ -4,6 +4,8 @@ __author__ = 'faide'
 import uuid
 import asyncio
 import aiozmq
+import aioredis
+import json
 from aiozmq import rpc
 
 from sqlalchemy.sql import select
@@ -25,9 +27,10 @@ class XbusBrokerFront(rpc.AttrHandler):
         self.redis_connection = None
         super(rpc.AttrHandler, self).__init__()
 
-    def prepare_redis(self):
-        self.redis_connection = yield from asyncio_redis.Connection.create(
-            host='localhost', port=6379)
+    def prepare_redis(self, redis_host, redis_port):
+        self.redis_connection = yield from aioredis.create_connection(
+            (redis_host, redis_port)
+        )
 
     @rpc.method
     def remote_add(self, arg1: int, arg2: int) -> int:
@@ -53,6 +56,9 @@ class XbusBrokerFront(rpc.AttrHandler):
         role_cols = yield from self.find_rolepasswd_by_login(login)
         if validate_password(role_cols['password'], password):
             token = uuid.uuid4()
+            yield from self.redis_connection.execute(
+                'set', token, json.dumps({'login': login})
+            )
         else:
             token = ""
 
@@ -114,8 +120,14 @@ class XbusBrokerFront(rpc.AttrHandler):
 @asyncio.coroutine
 def frontserver(engine_callback, config, socket):
     dbengine = yield from engine_callback(config)
+    broker = XbusBrokerFront(dbengine)
+
+    redis_host = config.get('redis', 'host')
+    redis_port = config.getint('redis', 'port')
+    broker.prepare_redis(redis_host, redis_port)
+
     zmqserver = yield from rpc.serve_rpc(
-        XbusBrokerFront(dbengine),
+        broker,
         bind=socket
     )
     yield from zmqserver.wait_closed()
