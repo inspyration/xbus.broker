@@ -44,6 +44,7 @@ setup(
         "setuptools",
         "aiopg >= 0.4.1",
         "aiozmq >= 0.5.2",
+        "hiredis",
         "aioredis >= 0.1.4",
         "msgpack-python",
         "sqlalchemy >= 0.9.8",
