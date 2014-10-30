@@ -46,9 +46,14 @@ class XbusBrokerFront(XbusBrokerBase):
         we a login/password. If the authentication phase is ok you'll get a
         token that must be provided during other method calls.
 
-        :param login: the login you want to authenticate against
-        :param password: the password that must match your login
-        :return: returns a unicode token that can be used during the session
+        :param login:
+         the login you want to authenticate against
+
+        :param password:
+         the password that must match your login
+
+        :return:
+         a unicode token that can be used during the session
         """
         role_cols = yield from self.find_rolepasswd_by_login(login)
         if validate_password(role_cols['password'], password):
@@ -116,6 +121,25 @@ class XbusBrokerFront(XbusBrokerBase):
 
 @asyncio.coroutine
 def get_frontserver(engine_callback, config, socket):
+    """A helper function that is used internally to create a running server for
+    the front part of Xbus
+
+    :param engine_callback:
+     the engine constructor we will be to "yield from" to get a real dbengine
+
+    :param config:
+     the application configuration instance
+     :class:`configparser.ConfigParser` it MUST contain a section redis and
+     two keys: 'host' and 'port'
+
+    :param socket:
+     a string representing the socker address on which we will spawn our 0mq
+     listener
+
+    :return:
+     a future that is waiting for a wait_closed() call before being
+     fired back.
+    """
     dbengine = yield from engine_callback(config)
     broker = XbusBrokerFront(dbengine)
 
@@ -128,3 +152,7 @@ def get_frontserver(engine_callback, config, socket):
         bind=socket
     )
     yield from zmqserver.wait_closed()
+
+
+# we don't want our imports to be visible to others...
+__all__ = ["XbusBrokerFront", "get_frontserver"]
