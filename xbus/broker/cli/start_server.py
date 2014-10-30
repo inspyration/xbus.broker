@@ -11,8 +11,9 @@ import signal
 import sys
 
 
-def signal_handler(signal, frame):
+def signal_handler(_signal, frame):
         print('')
+        print('received signal {} during frame {}'.format(_signal, frame))
         print('User initiated shutdown by Ctrl+C')
         sys.exit(0)
 
@@ -27,6 +28,7 @@ def get_engine(config):
 
 def start_server() -> None:
     """A helper function that is used to start the broker server
+
     :return: None
     """
     signal.signal(signal.SIGINT, signal_handler)
