@@ -10,23 +10,6 @@ from xbus.broker.model import metadata
 from xbus.broker.model.types import UUID
 
 
-emitter = Table(
-    'emitter', metadata,
-    Column('id', UUID, default=uuid4, primary_key=True),
-    Column(
-        'login',
-        Unicode(length=64),
-        index=True, nullable=False, unique=True
-    ),
-    Column(
-        'profile_id',
-        UUID,
-        ForeignKey('emitter_profile.id', ondelete='CASCADE'),
-        nullable=False
-    ),
-    Column('last_emit', DateTime),
-)
-
 emitter_profile = Table(
     'emitter_profile', metadata,
     Column('id', UUID, default=uuid4, primary_key=True),

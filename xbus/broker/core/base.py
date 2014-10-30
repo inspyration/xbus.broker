@@ -2,6 +2,9 @@
 __author__ = 'faide'
 
 import aioredis
+import json
+import asyncio
+
 from aiozmq import rpc
 
 
@@ -19,3 +22,21 @@ class XbusBrokerBase(rpc.AttrHandler):
         self.redis_connection = yield from aioredis.create_connection(
             (redis_host, redis_port)
         )
+
+    @asyncio.coroutine
+    def create_token(self, token: bytes, info: dict):
+        yield from self.redis_connection.execute(
+            'set', 'tok:' + token, json.dumps(info)
+        )
+
+    @asyncio.coroutine
+    def get_token_info(self, token: bytes) -> dict:
+
+        info = yield from self.redis_connection.execute(
+            'get', 'tok:' + token
+        )
+        if info:
+            return json.loads(info)
+
+    @asyncio.coroutine
+    def destroy_token(self, token: bytes):

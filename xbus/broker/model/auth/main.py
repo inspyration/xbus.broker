@@ -70,8 +70,8 @@ permission = Table(
     Column("description", Unicode(255)),
 )
 
-# the role is what every emitter, worker or consumer needs in order to be able
-# to login into the broker.
+# the role is what every worker or consumer needs in order to be able to login
+# into the broker.
 role = Table(
     'role', metadata,
     Column('id', UUID, default=uuid4, primary_key=True),
@@ -82,3 +82,16 @@ role = Table(
            index=True, nullable=False),
     Column('last_logged', DateTime),
 )
+
+emitter = Table(
+    'emitter', metadata,
+    Column('id', UUID, default=uuid4, primary_key=True),
+    Column('login', Unicode(length=64), index=True, nullable=False,
+           unique=True),
+    Column('password', Unicode(80)),
+    Column('profile_id', UUID,
+           ForeignKey('emitter_profile.id', ondelete='CASCADE'),
+           nullable=False),
+    Column('last_emit', DateTime),
+)
+

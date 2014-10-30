@@ -41,7 +41,7 @@ class XbusBrokerFront(XbusBrokerBase):
 
     @rpc.method
     @asyncio.coroutine
-    def login(self, login: str, password: str) -> str:
+    def login(self, login: str, password: str) -> bytes:
         """Before doing anything usefull you'll need to login into the broker
         we a login/password. If the authentication phase is ok you'll get a
         token that must be provided during other method calls.
@@ -55,20 +55,19 @@ class XbusBrokerFront(XbusBrokerBase):
         :return:
          a unicode token that can be used during the session
         """
-        role_cols = yield from self.find_rolepasswd_by_login(login)
-        if validate_password(role_cols['password'], password):
-            token = uuid.uuid4()
-            yield from self.redis_connection.execute(
-                'set', token, json.dumps({'login': login})
-            )
+        emitter_id, emitter_pwd = yield from self.find_emitter_by_login(login)
+        if validate_password(emitter_pwd, password):
+            token = uuid.uuid4().bytes
+            info = {'id': id, 'login': login}
+            yield from self.create_token(token, info)
         else:
-            token = ""
+            token = b""
 
         return token
 
     @rpc.method
     @asyncio.coroutine
-    def logout(self, token: str):
+    def logout(self, token: bytes):
         """When you are done using the broker you should call this method to
         make sure your token is destroyed and no one can reuse it
 
@@ -79,17 +78,17 @@ class XbusBrokerFront(XbusBrokerBase):
 
     @rpc.method
     @asyncio.coroutine
-    def new_envelop(self, login):
+    def start_envelope(self, token: str):
         # lookup the emitters table and find a matching "login"
-        emitter = yield from self.find_emitter_by_login(login)
+        emitter_id = yield from self.find_emitter_id_by_token(token)
 
         # then do something
         pass
 
     @asyncio.coroutine
-    def find_emitter_by_login(self, login):
+    def find_emitter_by_login(self, login: str):
         with (yield from self.dbengine) as conn:
-            query = emitter.select()
+            query = select(emitter.c.id, emitter.c.password)
             query = query.where(
                 emitter.c.login == login
             ).limit(1)
@@ -98,7 +97,7 @@ class XbusBrokerFront(XbusBrokerBase):
             return res[0]
 
     @asyncio.coroutine
-    def find_rolepasswd_by_login(self, login):
+    def find_role_by_login(self, login: str):
         with (yield from self.dbengine) as conn:
             query = select(role.c.password)
             query = query.where(
