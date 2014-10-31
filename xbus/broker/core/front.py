@@ -3,6 +3,7 @@ __author__ = 'faide'
 
 import asyncio
 import json
+import aiozmq
 from aiozmq import rpc
 
 from sqlalchemy.sql import select
@@ -31,7 +32,19 @@ class XbusBrokerFront(XbusBrokerBase):
     If you have finished your session you SHOULD call the logout() method.
     This is important in order to protect yourself. Calling logout will
     invalidate the token and make sure no one can reuse it ever.
+
+    Internally the front server will wait for a backend to come register itself.
+    As long as the backend is not ready the front will just store the
+    envelopes, events and data and acknowledge them to the clients.
+    The corresponding envelopes will be marked as waiting as long as no
+    backend is present.
     """
+
+    def __init__(self, *args, **kwargs):
+        # at the beginning the backend is None. Then the Front2Back will set
+        # a backend in place when one comes to register itself.
+        self.backend = None
+        super(XbusBrokerFront, self).__init__(*args, **kwargs)
 
     @rpc.method
     @asyncio.coroutine
@@ -630,6 +643,38 @@ class XbusBrokerFront(XbusBrokerBase):
             conn.execute(insert)
 
 
+class XbusBrokerFront2Back(rpc.AttrHandler):
+
+    def __init__(self, broker, *args, **kwargs):
+        self.backend = None
+        self.broker = broker
+        super(XbusBrokerFront2Back, self).__init__(*args, **kwargs)
+
+    @rpc.method
+    @asyncio.coroutine
+    def register_backend(self, uri):
+        """Register a backend on the frontend by giving its URI. If the
+        operation goes well returns True. Else return False
+
+        :param uri:
+         the URI where the backend is exposing his own 0mq socket configured as
+         a router.
+
+        :return:
+           - True: if your backend is correctly registered
+           - False: if your backend is not properly registered (ie: another
+             backend is already registered on this frontend...)
+        """
+        if self.broker.backend is not None:
+            return False
+
+        else:
+            # set the backend client on the broker
+            self.broker.backend = True
+            self.broker.backend = yield from aiozmq.rpc.connect_rpc(connect=uri)
+            return True
+
+
 @asyncio.coroutine
 def get_frontserver(engine_callback, config, socket):
     """A helper function that is used internally to create a running server for
@@ -658,11 +703,22 @@ def get_frontserver(engine_callback, config, socket):
     redis_port = config.getint('redis', 'port')
     broker.prepare_redis(redis_host, redis_port)
 
-    zmqserver = yield from rpc.serve_rpc(
+    frontzmqserver = yield from rpc.serve_rpc(
         broker,
         bind=socket
     )
-    yield from zmqserver.wait_closed()
+
+    # prepare the socket we use to communicate between front and backend
+    front2back = XbusBrokerFront2Back(broker)
+    front2backzqm = yield from rpc.serve_rpc(
+        front2back,
+        bind="inproc://#f2b"
+    )
+
+    coroutines = [frontzmqserver.wait_closed(), front2backzqm.wait_closed()]
+
+    # wait for all coroutines to complete
+    yield from asyncio.gather(*coroutines)
 
 
 # we don't want our imports to be visible to others...
