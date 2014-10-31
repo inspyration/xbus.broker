@@ -10,6 +10,7 @@ sqlalchemy.dburi = postgres://user:password@servername:port/database
 [zmq]
 ; the front socket where emitters will send data
 frontsocket = tcp://127.0.0.1:1984
+backsocket = tcp://127.0.0.1:4891
 
 [redis]
 ; the redis server used for session handling
