@@ -3,6 +3,7 @@ __author__ = 'jgavrel'
 
 import asyncio
 import json
+import aiozmq
 from aiozmq import rpc
 
 from sqlalchemy.sql import select
@@ -25,6 +26,10 @@ class XbusBrokerBack(XbusBrokerBase):
     This is important in order to protect yourself. Calling logout will
     invalidate the token and make sure no one can reuse it ever.
     """
+
+    def __init__(self, *args, **kwargs):
+        super(XbusBrokerBack, self).__init__(*args, **kwargs)
+        self.node_registry = {}
 
     @rpc.method
     @asyncio.coroutine
@@ -69,8 +74,59 @@ class XbusBrokerBack(XbusBrokerBase):
         res = yield from self.destroy_key(token)
         return res
 
+    @rpc.method
     @asyncio.coroutine
-    def find_role_by_login(self, login: str):
+    def register_node(self, token: str, uri: str) -> bool:
+        """Register a worker / consumer on the broker. This worker will be
+        known by the
+        broker and called when some work is available.
+
+        :param token:
+         the token your worker previously obtained by using the
+         :meth:`XbusBrokerBack.login` method
+
+        :param uri:
+         a unicode object representing the socket address on which your
+         worker is available. The worker is effectivly a server and must
+         answer on the designated socket when we need it.
+
+        :return:
+         True if the registration went well and the broker now knows the worker
+         False if something went wrong during registration and the broker
+         does not recognize the worker as being part of its active graph.
+        """
+        token_data = yield from self.get_key_info(token)
+
+        if token_data is None:
+            # token was invalid, return False to inform our potential worker of
+            # the issue
+            return False
+        else:
+            role_login = token_data.get('login', None)
+            if role_login is None:
+                return False
+
+        # then connect to our worker's socket
+        node_client = yield from aiozmq.rpc.connect_rpc(
+            connect=uri
+        )
+        # keep a reference to our connected worker to be able to call him
+        # later-on when we have work for him to do
+        self.node_registry[role_login] = node_client
+        return True
+
+    @asyncio.coroutine
+    def find_role_by_login(self, login: str) -> tuple:
+        """internal helper method used to find a role
+        (id, password, service_id) by looking up in the database its login
+
+        :param login:
+         the login that identifies the role you are searching
+
+        :return:
+         a 3-tuple containing (id, password, service_id), if nothing is found
+         the tuple will contain (None, None, None)
+        """
         with (yield from self.dbengine) as conn:
             query = select(role.c.id, role.c.password, role.c.service_id)
             query = query.where(role.c.login == login).limit(1)
