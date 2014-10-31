@@ -132,7 +132,11 @@ class XbusBrokerBack(XbusBrokerBase):
             query = query.where(role.c.login == login).limit(1)
 
             res = yield from conn.execute(query)
-            return res[0]
+            res = res[0]
+            if res is None:
+                res = (None, None, None)
+
+            return res
 
 
 @asyncio.coroutine
