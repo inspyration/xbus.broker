@@ -105,7 +105,7 @@ class XbusBrokerFront(XbusBrokerBase):
             return ""
 
         envelope_id = self.new_envelope()
-        info = {'emitter_id': emitter_id}
+        info = {'emitter_id': emitter_id, 'events': []}
         info_json = json.dumps(info)
         yield from self.save_key(envelope_id, info_json)
 
@@ -156,10 +156,13 @@ class XbusBrokerFront(XbusBrokerBase):
         try:
             envelope_info = json.loads(envelope_json)
             envelope_emitter_id = envelope_info['emitter_id']
+            envelope_closed = envelope_info.get('closed', False)
         except (ValueError, SyntaxError, KeyError):
             return ""
 
         if emitter_id != envelope_emitter_id:
+            return ""
+        if envelope_closed:
             return ""
 
         type_id = yield from self.find_event_type_by_name(event_name)
@@ -173,6 +176,10 @@ class XbusBrokerFront(XbusBrokerBase):
                 'type_id': type_id}
         info_json = json.dumps(info)
         yield from self.save_key(event_id, info_json)
+
+        envelope_info['events'].append(event_id)
+        envelope_json = json.dumps(envelope_info)
+        yield from self.save_key(envelope_id, envelope_json)
 
         yield from self.log_new_event(event_id, envelope_id, emitter_id,
                                       type_id, estimate)
@@ -220,17 +227,206 @@ class XbusBrokerFront(XbusBrokerBase):
             return False
 
         try:
-            envelope_info = json.loads(event_json)
-            event_envelope_id = envelope_info['envelope_id']
-            event_emitter_id = envelope_info['emitter_id']
+            event_info = json.loads(event_json)
+            event_envelope_id = event_info['envelope_id']
+            event_emitter_id = event_info['emitter_id']
+            event_closed = event_info.get('closed', False)
         except (ValueError, SyntaxError, KeyError):
             return False
 
         if emitter_id != event_emitter_id or envelope_id != event_envelope_id:
             return False
+        if event_closed:
+            return False
 
         yield from self.log_sent_item(event_id, index, data)
 
+        return True
+
+    @rpc.method
+    @asyncio.coroutine
+    def end_event(self, token: str, envelope_id: str, event_id: str) -> bool:
+        """Signal that all items have been sent for a given event.
+
+        :param token:
+         the emitter's connection token, obtained from the
+         :meth:`.XbusBrokerFront.login` method which is exposed on the same
+         0mq socket.
+
+        :param envelope_id:
+         the UUID of an envelope previously opened by the emitter using the
+         :meth:`.XbusBrokerFront.start_envelope` method which is exposed on
+         the same 0mq socket.
+
+        :param event_id:
+         the UUID of the event
+
+        :return:
+         True if successful, False otherwise
+        """
+
+        emitter_json = yield from self.get_key_info(token)
+        if emitter_json is None:
+            return False
+
+        try:
+            emitter_info = json.loads(emitter_json)
+            emitter_id = emitter_info['id']
+        except (ValueError, SyntaxError, KeyError):
+            return False
+
+        event_json = yield from self.get_key_info(event_id)
+        if event_json is None:
+            return False
+
+        try:
+            event_info = json.loads(event_json)
+            event_envelope_id = event_info['envelope_id']
+            event_emitter_id = event_info['emitter_id']
+            event_closed = event_info.get('closed', False)
+        except (ValueError, SyntaxError, KeyError):
+            return False
+
+        if emitter_id != event_emitter_id or envelope_id != event_envelope_id:
+            return False
+        if event_closed:
+            return False
+
+        event_info['closed'] = True
+        event_json = json.dumps(event_info)
+        yield from self.save_key(event_id, event_json)
+
+        # Do nothing else for now.
+        return True
+
+    @rpc.method
+    @asyncio.coroutine
+    def end_envelope(self, token: str, envelope_id: str) -> bool:
+        """Closes an envelope. Each event started for this envelope must have
+        been closed beforehand, using :meth:`.XbusBrokerFront.end_event`.
+
+        :param token:
+         the emitter's connection token, obtained from the
+         :meth:`.XbusBrokerFront.login` method which is exposed on the same
+         0mq socket.
+
+        :param envelope_id:
+         the UUID of an envelope previously opened by the emitter using the
+         :meth:`.XbusBrokerFront.start_envelope` method which is exposed on
+         the same 0mq socket.
+
+        :return:
+         True if successful, False otherwise
+        """
+
+        emitter_json = yield from self.get_key_info(token)
+        if emitter_json is None:
+            return False
+
+        try:
+            emitter_info = json.loads(emitter_json)
+            emitter_id = emitter_info['id']
+        except (ValueError, SyntaxError, KeyError):
+            return False
+
+        envelope_json = yield from self.get_key_info(envelope_id)
+        if envelope_json is None:
+            return False
+
+        try:
+            envelope_info = json.loads(envelope_json)
+            envelope_events = envelope_info['events']
+            envelope_closed = envelope_info.get('closed', False)
+            envelope_emitter_id = envelope_info['emitter_id']
+        except (ValueError, SyntaxError, KeyError):
+            return False
+
+        if emitter_id != envelope_emitter_id:
+            return False
+        if envelope_closed:
+            return False
+
+        for event_id in envelope_events:
+            event_json = yield from self.get_key_info(event_id)
+            if event_json is None:
+                return False
+            try:
+                event_info = json.loads(event_json)
+                if not event_info.get('closed', False):
+                    return False
+            except(ValueError, SyntaxError, KeyError):
+                return False
+
+        envelope_info['closed'] = True
+        envelope_json = json.dumps(envelope_info)
+        yield from self.save_key(envelope_id, envelope_json)
+
+        # Do nothing else for now.
+        return True
+
+    @rpc.method
+    @asyncio.coroutine
+    def cancel_envelope(self, token: str, envelope_id: str) -> bool:
+        """Cancel the emission of an opened envelope.
+
+        :param token:
+         the emitter's connection token, obtained from the
+         :meth:`.XbusBrokerFront.login` method which is exposed on the same
+         0mq socket.
+
+        :param envelope_id:
+         the UUID of an envelope previously opened by the emitter using the
+         :meth:`.XbusBrokerFront.start_envelope` method which is exposed on
+         the same 0mq socket.
+
+        :return:
+         True if successful, False otherwise
+        """
+
+        emitter_json = yield from self.get_key_info(token)
+        if emitter_json is None:
+            return False
+
+        try:
+            emitter_info = json.loads(emitter_json)
+            emitter_id = emitter_info['id']
+        except (ValueError, SyntaxError, KeyError):
+            return False
+
+        envelope_json = yield from self.get_key_info(envelope_id)
+        if envelope_json is None:
+            return False
+
+        try:
+            envelope_info = json.loads(envelope_json)
+            envelope_events = envelope_info['events']
+            envelope_closed = envelope_info.get('closed')
+            envelope_emitter_id = envelope_info['emitter_id']
+        except (ValueError, SyntaxError, KeyError):
+            return False
+
+        if emitter_id != envelope_emitter_id:
+            return False
+        if envelope_closed:
+            return False
+
+        for event_id in envelope_events:
+            event_json = yield from self.get_key_info(event_id)
+            if event_json is None:
+                continue
+            try:
+                event_info = json.loads(event_json)
+                event_info['closed'] = True
+                event_json = json.dumps(event_info)
+                yield from self.save_key(event_id, event_json)
+            except(ValueError, SyntaxError, KeyError):
+                continue
+
+        envelope_info['closed'] = True
+        envelope_json = json.dumps(envelope_info)
+        yield from self.save_key(envelope_id, envelope_json)
+
+        # Do nothing else for now.
         return True
 
     @asyncio.coroutine
@@ -240,17 +436,6 @@ class XbusBrokerFront(XbusBrokerBase):
                            emitter.c.profile_id)
             query = query.where(
                 emitter.c.login == login
-            ).limit(1)
-
-            res = yield from conn.execute(query)
-            return res[0]
-
-    @asyncio.coroutine
-    def find_role_by_login(self, login: str):
-        with (yield from self.dbengine) as conn:
-            query = select(role.c.id, role.c.password)
-            query = query.where(
-                role.c.login == login
             ).limit(1)
 
             res = yield from conn.execute(query)
@@ -277,6 +462,14 @@ class XbusBrokerFront(XbusBrokerBase):
             conn.execute(insert)
 
     @asyncio.coroutine
+    def update_envelope_state_wait(self, envelope_id: str):
+        with (yield from self.dbengine) as conn:
+            update = envelope.update()
+            update = update.where(envelope.c.id == envelope_id)
+            update = update.values(state='wait')
+            conn.execute(update)
+
+    @asyncio.coroutine
     def log_new_event(self, event_id: str, envelope_id: str, emitter_id: str,
                       type_id: str, estimate: int):
         with (yield from self.dbengine) as conn:
@@ -285,6 +478,14 @@ class XbusBrokerFront(XbusBrokerBase):
                                    emitter_id=emitter_id, type_id=type_id,
                                    estimated_items=estimate)
             conn.execute(insert)
+
+    @asyncio.coroutine
+    def update_event_sent_items_count(self, event_id: str, sent_items: int):
+        with (yield from self.dbengine) as conn:
+            update = event.update()
+            update = update.where(event.c.id == event_id)
+            update = update.values(sent_items=sent_items)
+            conn.execute(update)
 
     @asyncio.coroutine
     def log_sent_item(self, event_id: str, index: int, data: bytes):
