@@ -68,6 +68,7 @@ class XbusBrokerBack(XbusBrokerBase):
 
         :param token:
          the token you want to invalidate
+
         :return:
          True if successful, False otherwise
         """
