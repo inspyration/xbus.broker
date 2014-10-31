@@ -115,4 +115,4 @@ def get_backserver(engine_callback, config, socket):
 
 
 # we don't want our imports to be visible to others...
-__all__ = ["XbusBrokerBack", "get_frontserver"]
+__all__ = ["XbusBrokerBack", "get_backserver"]
