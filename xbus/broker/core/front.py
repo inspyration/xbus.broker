@@ -5,10 +5,10 @@ import asyncio
 import json
 from aiozmq import rpc
 
-from sqlalchemy import func
 from sqlalchemy.sql import select
+from sqlalchemy.sql import and_
+from sqlalchemy import func
 
-from xbus.broker.model import role
 from xbus.broker.model import validate_password
 from xbus.broker.model import emitter
 from xbus.broker.model import envelope
@@ -182,8 +182,9 @@ class XbusBrokerFront(XbusBrokerBase):
         envelope_json = json.dumps(envelope_info)
         yield from self.save_key(envelope_id, envelope_json)
 
-        yield from self.log_new_event(event_id, envelope_id, emitter_id,
-                                      type_id, estimate)
+        yield from self.log_new_event(
+            event_id, envelope_id, emitter_id, type_id, estimate
+        )
 
     @rpc.method
     @asyncio.coroutine
@@ -500,9 +501,12 @@ class XbusBrokerFront(XbusBrokerBase):
          False otherwise
         """
         with (yield from self.dbengine) as conn:
+            query = select(func.count(emitter_profile_event_type_rel))
             query = query.where(
-                emitter_profile_event_type_rel.c.profile_id == profile_id and
-                emitter_profile_event_type_rel.c.type_id == type_id
+                and_(
+                    emitter_profile_event_type_rel.c.profile_id == profile_id,
+                    emitter_profile_event_type_rel.c.type_id == type_id
+                )
             )
 
             res = yield from conn.execute(query)
