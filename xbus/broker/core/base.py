@@ -18,6 +18,7 @@ class XbusBrokerBase(rpc.AttrHandler):
         self.redis_connection = None
         super(rpc.AttrHandler, self).__init__()
 
+    @asyncio.coroutine
     def prepare_redis(self, redis_host, redis_port):
         self.redis_connection = yield from aioredis.create_connection(
             (redis_host, redis_port)
