@@ -5,18 +5,10 @@ import asyncio
 import json
 from aiozmq import rpc
 
-from sqlalchemy import func
 from sqlalchemy.sql import select
 
-from xbus.broker.model import user
 from xbus.broker.model import role
 from xbus.broker.model import validate_password
-from xbus.broker.model import emitter
-from xbus.broker.model import envelope
-from xbus.broker.model import event
-from xbus.broker.model import event_type
-from xbus.broker.model import emitter_profile_event_type_rel
-from xbus.broker.model import item
 
 from xbus.broker.core import XbusBrokerBase
 
