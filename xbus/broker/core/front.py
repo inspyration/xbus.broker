@@ -676,7 +676,7 @@ class XbusBrokerFront2Back(rpc.AttrHandler):
 
 
 @asyncio.coroutine
-def get_frontserver(engine_callback, config, socket):
+def get_frontserver(engine_callback, config, socket, b2fsocket):
     """A helper function that is used internally to create a running server for
     the front part of Xbus
 
@@ -689,8 +689,12 @@ def get_frontserver(engine_callback, config, socket):
      two keys: 'host' and 'port'
 
     :param socket:
-     a string representing the socker address on which we will spawn our 0mq
+     a string representing the socket address on which we will spawn our 0mq
      listener
+
+    :param b2fsocket:
+     a string representing the socket address on which the front server will
+     listen so that the backend will be able to register itself
 
     :return:
      a future that is waiting for a wait_closed() call before being
@@ -712,7 +716,7 @@ def get_frontserver(engine_callback, config, socket):
     front2back = XbusBrokerFront2Back(broker)
     front_from_back_zqm = yield from rpc.serve_rpc(
         front2back,
-        bind="inproc://#b2f"
+        bind=b2fsocket
     )
 
     coroutines = [

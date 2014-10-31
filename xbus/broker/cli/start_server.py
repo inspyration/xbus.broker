@@ -37,11 +37,12 @@ def start_all() -> None:
     config = get_config()
     front_socket_name = config.get('zmq', 'frontsocket')
     back_socket_name = config.get('zmq', 'backsocket')
+    b2f_socket_name = config.get('zmq', 'b2fsocket')
     prepare_event_loop()
 
     coroutines = [
-        get_frontserver(get_engine, config, front_socket_name),
-        get_backserver(get_engine, config, back_socket_name),
+        get_frontserver(get_engine, config, front_socket_name, b2f_socket_name),
+        get_backserver(get_engine, config, back_socket_name, b2f_socket_name),
     ]
 
     yield from asyncio.gather(*coroutines)

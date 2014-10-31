@@ -12,6 +12,10 @@ sqlalchemy.dburi = postgres://user:password@servername:port/database
 frontsocket = tcp://127.0.0.1:1984
 backsocket = tcp://127.0.0.1:4891
 
+; this is an in process socket used by the backend to register on the front
+; it must be unique throughout the 0mq inproc:// identifiers
+b2fsocket = inproc://#b2f
+
 [redis]
 ; the redis server used for session handling
 host = localhost

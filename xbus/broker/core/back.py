@@ -315,7 +315,7 @@ class XbusBrokerBack(XbusBrokerBase):
 
 
 @asyncio.coroutine
-def get_backserver(engine_callback, config, socket):
+def get_backserver(engine_callback, config, socket, b2fsocket):
     """A helper function that is used internally to create a running server for
     the back part of Xbus
 
@@ -336,8 +336,7 @@ def get_backserver(engine_callback, config, socket):
      fired back.
     """
     dbengine = yield from engine_callback(config)
-    frontsocket = 'inproc://#b2f'
-    broker_back = XbusBrokerBack(dbengine, frontsocket, socket)
+    broker_back = XbusBrokerBack(dbengine, b2fsocket, socket)
 
     redis_host = config.get('redis', 'host')
     redis_port = config.getint('redis', 'port')
