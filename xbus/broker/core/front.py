@@ -165,7 +165,8 @@ class XbusBrokerFront(XbusBrokerBase):
         if envelope_closed:
             return ""
 
-        type_id = yield from self.find_event_type_by_name(event_name)
+        event_type_row = yield from self.find_event_type_by_name(event_name)
+        type_id = event_type_row[0]
 
         access = yield from self.check_event_access(profile_id, type_id)
         if access is False:
@@ -361,6 +362,9 @@ class XbusBrokerFront(XbusBrokerBase):
         envelope_json = json.dumps(envelope_info)
         yield from self.save_key(envelope_id, envelope_json)
 
+        # The front-end will have to log the new envelope state according to
+        # the back-end's replies ('wait' or 'exec').
+
         # Do nothing else for now.
         return True
 
@@ -426,25 +430,76 @@ class XbusBrokerFront(XbusBrokerBase):
         envelope_json = json.dumps(envelope_info)
         yield from self.save_key(envelope_id, envelope_json)
 
+        yield from self.update_envelope_state_cancel(envelope_id)
+
         # Do nothing else for now.
         return True
 
     @asyncio.coroutine
-    def find_emitter_by_login(self, login: str):
-        with (yield from self.dbengine) as conn:
-            query = select(emitter.c.id, emitter.c.password,
-                           emitter.c.profile_id)
-            query = query.where(
-                emitter.c.login == login
-            ).limit(1)
+    def find_emitter_by_login(self, login: str) -> tuple:
+        """Internal helper method used to find an emitter
+        (id, password, profile_id) by looking up in the database its login
 
-            res = yield from conn.execute(query)
-            return res[0]
+        :param login:
+         the login that identifies the emitter you are searching for
+
+        :return:
+         a 3-tuple containing (id, password, profile_id), if nothing is found
+         the tuple will contain (None, None, None)
+        """
+        with (yield from self.dbengine) as conn:
+            query = select((emitter.c.id, emitter.c.password,
+                            emitter.c.profile_id))
+            query = query.where(emitter.c.login == login).limit(1)
+
+            rows = yield from conn.execute(query)
+            if len(rows) > 0:
+                return rows[0]
+            else:
+                return None, None, None
+
+    @asyncio.coroutine
+    def find_event_type_by_name(self, name: str) -> tuple:
+        """Internal helper method used to find an event type's id
+        by looking up in the database its login
+
+        :param name:
+         the name that identifies the event type you are searching for
+
+        :return:
+         a 1-tuple containing (id,), if nothing is found the tuple will
+         contain (None,)
+        """
+        with (yield from self.dbengine) as conn:
+            query = select((event_type.c.id,))
+            query = query.where(event_type.c.name == name)
+            query = query.limit(1)
+
+            rows = yield from conn.execute(query)
+            if len(rows) > 0:
+                return rows[0]
+            else:
+                return None,
 
     @asyncio.coroutine
     def check_event_access(self, profile_id: str, type_id: str) -> bool:
+        """Internal helper method used to determine whether an emitter, by
+        its profile, has the right to start an event of the given type.
+        (id, password, profile_id) by looking up in the database its login
+
+        :param profile_id:
+         the internal UUID of the emitter's profile. This can be obtained
+         using the method :meth:`.XbusBrokerFront.find_emitter_by_login`.
+
+        :param type_id:
+         the internal UUID of the event type. This can be obtained using the
+         method :meth:`.XbusBrokerFront.find_event_type_by_name`.
+
+        :return:
+         True if the emitter has the right to start an event of this type,
+         False otherwise
+        """
         with (yield from self.dbengine) as conn:
-            query = select(func.count(emitter_profile_event_type_rel))
             query = query.where(
                 emitter_profile_event_type_rel.c.profile_id == profile_id and
                 emitter_profile_event_type_rel.c.type_id == type_id
@@ -455,6 +510,14 @@ class XbusBrokerFront(XbusBrokerBase):
 
     @asyncio.coroutine
     def log_new_envelope(self, envelope_id: str, emitter_id: str):
+        """Internal helper method used to log the creation of a new envelope.
+
+        :param envelope_id:
+         the UUID of the new envelope
+
+        :param emitter_id:
+         the internal UUID of the emitter of the new envelope
+        """
         with (yield from self.dbengine) as conn:
             insert = envelope.insert()
             insert = insert.values(id=envelope_id, state='emit',
@@ -463,6 +526,13 @@ class XbusBrokerFront(XbusBrokerBase):
 
     @asyncio.coroutine
     def update_envelope_state_wait(self, envelope_id: str):
+        """Internal helper method used to log the fact that an envelope has
+        been successfully received from its emitter, and is now waiting for
+        treatment by the back-end.
+
+        :param envelope_id:
+         the UUID of the envelope
+        """
         with (yield from self.dbengine) as conn:
             update = envelope.update()
             update = update.where(envelope.c.id == envelope_id)
@@ -470,8 +540,41 @@ class XbusBrokerFront(XbusBrokerBase):
             conn.execute(update)
 
     @asyncio.coroutine
+    def update_envelope_state_cancel(self, envelope_id: str):
+        """Internal helper method used to log the cancellation of an
+        envelope before its emission was completed.
+
+        :param envelope_id:
+         the UUID of the envelope.
+        """
+        with (yield from self.dbengine) as conn:
+            update = envelope.update()
+            update = update.where(envelope.c.id == envelope_id)
+            update = update.values(state='canc')
+            conn.execute(update)
+
+    @asyncio.coroutine
     def log_new_event(self, event_id: str, envelope_id: str, emitter_id: str,
                       type_id: str, estimate: int):
+        """Internal helper method used to log the creation of a new event.
+
+        :param event_id:
+         the UUID of the new event
+
+        :param envelope_id:
+         the UUID of the envelope which contains the event
+
+        :param emitter_id:
+         the internal UUID of the emitter of the new event
+
+        :param type_id:
+         the internal UUID of the event type. This can be obtained using the
+         method :meth:`.XbusBrokerFront.find_event_type_by_name`
+
+        :param estimate:
+         an estimation, by the emitter, of the number of items that will be
+         sent for this event.
+        """
         with (yield from self.dbengine) as conn:
             insert = event.insert()
             insert = insert.values(id=event_id, envelope_id=envelope_id,
@@ -481,6 +584,15 @@ class XbusBrokerFront(XbusBrokerBase):
 
     @asyncio.coroutine
     def update_event_sent_items_count(self, event_id: str, sent_items: int):
+        """Internal helper method used to log the number of items that was
+        finally sent by the emitter for a given event.
+
+        :param event_id:
+         the UUID of the event
+
+        :param sent_items:
+         the number of items that were emitted
+        """
         with (yield from self.dbengine) as conn:
             update = event.update()
             update = update.where(event.c.id == event_id)
@@ -489,20 +601,22 @@ class XbusBrokerFront(XbusBrokerBase):
 
     @asyncio.coroutine
     def log_sent_item(self, event_id: str, index: int, data: bytes):
+        """Internal helper method used to preserve the data of each item
+        received from the emitter.
+
+        :param event_id:
+         the UUID of the event
+
+        :param index:
+         the position of the item in the event
+
+        :param data:
+         the item's data payload.
+        """
         with (yield from self.dbengine) as conn:
             insert = item.insert()
             insert = insert.values(event_id=event_id, index=index, data=data)
             conn.execute(insert)
-
-    @asyncio.coroutine
-    def find_event_type_by_name(self, name: str) -> str:
-        with (yield from self.dbengine) as conn:
-            query = select(event_type.c.id)
-            query = query.where(event_type.c.name == name)
-            query = query.limit(1)
-
-            res = yield from conn.execute(query)
-            return res[0]
 
 
 @asyncio.coroutine
