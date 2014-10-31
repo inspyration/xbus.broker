@@ -710,12 +710,15 @@ def get_frontserver(engine_callback, config, socket):
 
     # prepare the socket we use to communicate between front and backend
     front2back = XbusBrokerFront2Back(broker)
-    front2backzqm = yield from rpc.serve_rpc(
+    front_from_back_zqm = yield from rpc.serve_rpc(
         front2back,
-        bind="inproc://#f2b"
+        bind="inproc://#b2f"
     )
 
-    coroutines = [frontzmqserver.wait_closed(), front2backzqm.wait_closed()]
+    coroutines = [
+        frontzmqserver.wait_closed(),
+        front_from_back_zqm.wait_closed()
+    ]
 
     # wait for all coroutines to complete
     yield from asyncio.gather(*coroutines)

@@ -14,6 +14,10 @@ from xbus.broker.model import validate_password
 from xbus.broker.core import XbusBrokerBase
 
 
+class BrokerBackError(Exception):
+    pass
+
+
 class XbusBrokerBack(XbusBrokerBase):
     """the XbusBrokerBack is in charge of handling workers and consumers
     on a specific 0mq socket.
@@ -27,12 +31,38 @@ class XbusBrokerBack(XbusBrokerBase):
     invalidate the token and make sure no one can reuse it ever.
     """
 
-    def __init__(self, *args, **kwargs):
-        super(XbusBrokerBack, self).__init__(*args, **kwargs)
+    def __init__(self, dbengine, frontsocket, socket):
+        super(XbusBrokerBack, self).__init__(dbengine)
+
+        self.frontsocket = frontsocket
+        self.socket = socket
+
         self.node_registry = {}
 
         self.envelopes = []
         self.events = {}
+
+    @asyncio.coroutine
+    def register_on_front(self):
+        """This method tries to register the backend on the frontend. If
+        everything goes well it should return True.
+        If we have an error during the registration process this method will
+        raise a :class:`BrokerBackError`
+
+        :return:
+         True
+
+        :raises:
+         :class:`BrokerBackError`
+        """
+        client = yield from aiozmq.rpc.connect_rpc(connect=self.frontsocket)
+        result = yield from client.call.register_backend(self.socket)
+        if result is None:
+            # yeeeks we got an error here ...
+            # let's do something stupid and b0rk out
+            raise BrokerBackError('Cannot register ourselves on the front')
+        else:
+            return True
 
     @rpc.method
     @asyncio.coroutine
@@ -302,18 +332,21 @@ def get_backserver(engine_callback, config, socket):
      listener
 
     :return:
-     a future that is waiting for a wait_closed() call before being
+     a future that is waiting for a closed() call before being
      fired back.
     """
     dbengine = yield from engine_callback(config)
-    broker = XbusBrokerBack(dbengine)
+    frontsocket = 'inproc://#b2f'
+    broker_back = XbusBrokerBack(dbengine, frontsocket, socket)
 
     redis_host = config.get('redis', 'host')
     redis_port = config.getint('redis', 'port')
-    broker.prepare_redis(redis_host, redis_port)
+
+    yield from broker_back.prepare_redis(redis_host, redis_port)
+    yield from broker_back.register_on_front()
 
     zmqserver = yield from rpc.serve_rpc(
-        broker,
+        broker_back,
         bind=socket
     )
     yield from zmqserver.wait_closed()

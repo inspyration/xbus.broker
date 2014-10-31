@@ -5,6 +5,7 @@ import asyncio
 import aiozmq
 from xbus.broker.core.base import XbusBrokerBase
 from xbus.broker.core.front import get_frontserver
+from xbus.broker.core.back import get_backserver
 
 
 def prepare_event_loop():
