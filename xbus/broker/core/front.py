@@ -146,6 +146,7 @@ class XbusBrokerFront(XbusBrokerBase):
             emitter_info = json.loads(emitter_json)
             emitter_id = emitter_info['id']
             profile_id = emitter_info['profile_id']
+
         except (ValueError, SyntaxError, KeyError):
             return ""
 
@@ -157,11 +158,13 @@ class XbusBrokerFront(XbusBrokerBase):
             envelope_info = json.loads(envelope_json)
             envelope_emitter_id = envelope_info['emitter_id']
             envelope_closed = envelope_info.get('closed', False)
+
         except (ValueError, SyntaxError, KeyError):
             return ""
 
         if emitter_id != envelope_emitter_id:
             return ""
+
         if envelope_closed:
             return ""
 
@@ -173,8 +176,12 @@ class XbusBrokerFront(XbusBrokerBase):
             return ""
 
         event_id = self.new_event()
-        info = {'emitter_id': emitter_id, 'envelope_id': envelope_id,
-                'type_id': type_id}
+        info = {
+            'emitter_id': emitter_id,
+            'envelope_id': envelope_id,
+            'type_id': type_id
+        }
+
         info_json = json.dumps(info)
         yield from self.save_key(event_id, info_json)
 
