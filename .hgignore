@@ -25,3 +25,4 @@ devdata.db
 .pydevproject
 .settings
 *.orig
+*.egg

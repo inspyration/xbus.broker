@@ -124,6 +124,8 @@ class XbusBrokerFront(XbusBrokerBase):
 
         yield from self.log_new_envelope(envelope_id, emitter_id)
 
+#        asyncio.async(self.backend_start_envelope(envelope_id))
+
         return envelope_id
 
     @rpc.method
@@ -457,6 +459,24 @@ class XbusBrokerFront(XbusBrokerBase):
 
         # Do nothing else for now.
         return True
+
+
+    @asyncio.coroutine
+    def backend_start_envelope(self, envelope_id: str) -> bool:
+        """Forward the new envelope to the backend.
+
+        :param envelope_id:
+         The generated envelope UUID.
+        :return:
+         True if successful, False otherwise
+        """
+        res = yield from self.backend.call.start_envelope(envelope_id)
+        if res:
+            print("Backend callback OK!")
+            return True
+        else:
+            print("Backend callback KO?")
+            return False
 
     @asyncio.coroutine
     def find_emitter_by_login(self, login: str) -> tuple:

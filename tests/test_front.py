@@ -4,6 +4,7 @@ __author__ = 'faide'
 import unittest
 import asyncio
 import aiozmq
+import json
 from unittest.mock import Mock
 
 from xbus.broker.core.front import XbusBrokerFront
@@ -98,5 +99,98 @@ class TestLogin(unittest.TestCase):
             client.close()
             front.close()
             assert ret == self.token, "We should have obtained our token!"
+
+        self.loop.run_until_complete(gotest())
+
+
+class TestFrontBase(unittest.TestCase):
+
+    def error_handler(self, loop, info):
+        print('Error occured: {}'.format(info))
+
+    def setUp(self):
+        asyncio.set_event_loop_policy(aiozmq.ZmqEventLoopPolicy())
+        self.loop = asyncio.new_event_loop()
+        # feed None to asyncio.set_event_loop() to directly specify the
+        # fact that the library should not rely on global loop existence
+        # and safely work by explicit loop passing
+        asyncio.set_event_loop(None)
+        self.front_socket = 'inproc://#test'
+
+    @asyncio.coroutine
+    def get_mock_frontbroker(self, **attrs):
+        """Create a mock front-end broker, using the given arguments to
+        override the object's methods and attributes with dummy values.
+
+        The given values will be converted whenever necessary:
+          _ to a mock function returning the new value, if the overridden
+          value is callable and the new value isn't ;
+          _ then to a coroutine, if the overridden value is also a coroutine
+          and the new value isn't.
+
+        :param attrs:
+         a dictionary which maps overridden attributes to their new value.
+        :return:
+         a zmqserver future you can yield from. Don't forget to
+         close() it when you are done with it
+        """
+        broker = XbusBrokerFront(None)
+        print(dir(broker))
+
+        for attr, value in attrs.items():
+
+            old_value = getattr(broker, attr)
+            if old_value:
+
+                if hasattr(old_value, '__call__'):
+                    if not hasattr(value, '__call__'):
+                        value = Mock(return_value=value)
+
+                    if asyncio.iscoroutinefunction(old_value) is True:
+                        if asyncio.iscoroutinefunction(value) is not True:
+                            value = asyncio.coroutine(value)
+
+            setattr(broker, attr, value)
+
+        zmqserver = yield from rpc.serve_rpc(
+            broker,
+            bind=self.front_socket,
+            loop=self.loop
+        )
+        self.loop.set_exception_handler(self.error_handler)
+        return zmqserver
+
+
+class TestNewEnvelope(TestFrontBase):
+
+    def setUp(self):
+        super().setUp()
+        self.emitter_id = 1
+        self.token = "989def91-b42b-442e-8ab9-685b10900748"
+        self.envelope_id = "989def91-b42b-442e-8ab9-685b10900749"
+
+    def test_new_envelope(self):
+
+        @asyncio.coroutine
+        def gotest():
+
+            front = yield from self.get_mock_frontbroker(
+                get_key_info=json.dumps({'id': self.emitter_id}),
+                new_envelope=self.envelope_id,
+                save_key=True,
+                log_new_envelope=True,
+                backend_start_envelope=True
+            )
+
+            client = yield from aiozmq.rpc.connect_rpc(
+                connect=self.front_socket,
+                loop=self.loop
+            )
+
+            ret = yield from client.call.start_envelope(self.token)
+            client.close()
+            front.close()
+            assert ret == self.envelope_id, "We should have obtained our " \
+                                            "envelope UUID!"
 
         self.loop.run_until_complete(gotest())
