@@ -118,7 +118,7 @@ class XbusBrokerFront(XbusBrokerBase):
             return ""
 
         envelope_id = self.new_envelope()
-        info = {'emitter_id': emitter_id, 'events': []}
+        info = {'emitter_id': emitter_id, 'events': [], 'forward': True}
         info_json = json.dumps(info)
         yield from self.save_key(envelope_id, info_json)
 
@@ -173,6 +173,7 @@ class XbusBrokerFront(XbusBrokerBase):
             envelope_info = json.loads(envelope_json)
             envelope_emitter_id = envelope_info['emitter_id']
             envelope_closed = envelope_info.get('closed', False)
+            envelope_forward = envelope_info['forward']
 
         except (ValueError, SyntaxError, KeyError):
             return ""
@@ -207,6 +208,10 @@ class XbusBrokerFront(XbusBrokerBase):
         yield from self.log_new_event(
             event_id, envelope_id, emitter_id, type_id, estimate
         )
+
+        if envelope_forward:
+            pass
+#            asyncio.async(self.backend_start_event(envelope_id, event_id))
 
         return event_id
 
@@ -260,12 +265,28 @@ class XbusBrokerFront(XbusBrokerBase):
         except (ValueError, SyntaxError, KeyError):
             return False
 
+        envelope_json = yield from self.get_key_info(envelope_id)
+        if envelope_json is None:
+            return False
+
+        try:
+            envelope_info = json.loads(envelope_json)
+            envelope_forward = envelope_info['forward']
+        except (ValueError, SyntaxError, KeyError):
+            return False
+
         if emitter_id != event_emitter_id or envelope_id != event_envelope_id:
             return False
         if event_closed:
             return False
 
         yield from self.log_sent_item(event_id, index, data)
+
+        if envelope_forward:
+            pass
+#            asyncio.async(
+#                self.backend_send_item(envelope_id, event_id, index, data)
+#            )
 
         return True
 
@@ -313,6 +334,16 @@ class XbusBrokerFront(XbusBrokerBase):
         except (ValueError, SyntaxError, KeyError):
             return False
 
+        envelope_json = yield from self.get_key_info(envelope_id)
+        if envelope_json is None:
+            return False
+
+        try:
+            envelope_info = json.loads(envelope_json)
+            envelope_forward = envelope_info['forward']
+        except (ValueError, SyntaxError, KeyError):
+            return False
+
         if emitter_id != event_emitter_id or envelope_id != event_envelope_id:
             return False
         if event_closed:
@@ -321,6 +352,10 @@ class XbusBrokerFront(XbusBrokerBase):
         event_info['closed'] = True
         event_json = json.dumps(event_info)
         yield from self.save_key(event_id, event_json)
+
+        if envelope_forward:
+            pass
+#            asyncio.async(self.backend_end_event(envelope_id, event_id))
 
         # Do nothing else for now.
         return True
@@ -364,6 +399,7 @@ class XbusBrokerFront(XbusBrokerBase):
             envelope_events = envelope_info['events']
             envelope_closed = envelope_info.get('closed', False)
             envelope_emitter_id = envelope_info['emitter_id']
+            envelope_forward = envelope_info['forward']
         except (ValueError, SyntaxError, KeyError):
             return False
 
@@ -389,6 +425,12 @@ class XbusBrokerFront(XbusBrokerBase):
 
         # The front-end will have to log the new envelope state according to
         # the back-end's replies ('wait' or 'exec').
+
+        if envelope_forward:
+#            asyncio.async(self.backend_end_envelope(envelope_id))
+            pass
+        else:
+            yield from self.update_envelope_state_wait(envelope_id)
 
         # Do nothing else for now.
         return True
@@ -431,6 +473,7 @@ class XbusBrokerFront(XbusBrokerBase):
             envelope_events = envelope_info['events']
             envelope_closed = envelope_info.get('closed')
             envelope_emitter_id = envelope_info['emitter_id']
+            envelope_forward = envelope_info['forward']
         except (ValueError, SyntaxError, KeyError):
             return False
 
@@ -457,16 +500,20 @@ class XbusBrokerFront(XbusBrokerBase):
 
         yield from self.update_envelope_state_cancel(envelope_id)
 
+        if envelope_forward:
+            pass
+#            asyncio.async(self.backend_cancel_event(envelope_id))
+
         # Do nothing else for now.
         return True
-
 
     @asyncio.coroutine
     def backend_start_envelope(self, envelope_id: str) -> bool:
         """Forward the new envelope to the backend.
 
         :param envelope_id:
-         The generated envelope UUID.
+         the generated envelope UUID
+
         :return:
          True if successful, False otherwise
         """
@@ -476,7 +523,137 @@ class XbusBrokerFront(XbusBrokerBase):
             return True
         else:
             print("Backend callback KO?")
+            yield from self.disable_backend_forward(envelope_id)
             return False
+
+    @asyncio.coroutine
+    def backend_start_event(self, envelope_id: str, event_id: str,
+                            type_id: str, type_name: str) -> bool:
+        """Forward the new envelope to the backend.
+
+        :param envelope_id:
+         the UUID of the envelope which contains the event
+
+        :param event_id:
+         the generated UUID of the event
+
+        :param type_id:
+         the internal UUID that corresponds to the type of the event
+
+        :param type_name:
+         the name of the type of the started event
+
+        :return:
+         True if successful, False otherwise
+        """
+        code, msg = yield from self.backend.call.start_event(
+            envelope_id, event_id, type_id, type_name
+        )
+        if code == 0:
+            return True
+        else:
+            yield from self.disable_backend_forward(envelope_id)
+            return False
+
+    @asyncio.coroutine
+    def backend_send_data(self, envelope_id, event_id, index, data):
+        """Forward the end of the event to the backend.
+
+        :param envelope_id:
+         the UUID of the envelope which contains the event
+
+        :param event_id:
+         The UUID of the event
+
+        :param index:
+         the item index
+
+        :param data:
+         the index data
+
+        :return:
+         True if successful, False otherwise
+        """
+        code, msg = yield from self.backend.call.end_event(
+            event_id, index, data
+        )
+        if code == 0:
+            return True
+        else:
+            yield from self.disable_backend_forward(envelope_id)
+            return False
+
+    @asyncio.coroutine
+    def backend_end_event(self, envelope_id, event_id):
+        """Forward the end of the event to the backend.
+
+        :param envelope_id:
+         the UUID of the envelope which contains the event
+
+        :param event_id:
+         the UUID of the event
+
+        :return:
+         True if successful, False otherwise
+        """
+        code, msg = yield from self.backend.call.end_event(event_id)
+        if code == 0:
+            return True
+        else:
+            yield from self.disable_backend_forward(envelope_id)
+            return False
+
+    @asyncio.coroutine
+    def backend_end_envelope(self, envelope_id):
+        """Forward the end of the envelope to the backend.
+
+        :param envelope_id:
+         the UUID of the envelope
+
+        :return:
+         True if successful, False otherwise
+        """
+        res = yield from self.backend.call.end_envelope(envelope_id)
+        if res == 0:
+            return True
+        else:
+            yield from self.disable_backend_forward(envelope_id)
+            return False
+
+    @asyncio.coroutine
+    def backend_cancel_envelope(self, envelope_id):
+        """Forward the cancellation of the envelope to the backend.
+
+        :param envelope_id:
+         the UUID of the envelope
+
+        :return:
+         True if successful, False otherwise
+        """
+        res = yield from self.backend.call.cancel_envelope(envelope_id)
+        if res == 0:
+            return True
+        else:
+            yield from self.disable_backend_forward(envelope_id)
+            return False
+
+    @asyncio.coroutine
+    def disable_backend_forward(self, envelope_id: str) -> bool:
+        """Internal helper that adds a flag to the envelope's cached info,
+        in order to prevent its content from being forwarded to the backend.
+
+        :param envelope_id:
+         the UUID of the envelope
+
+        :return:
+         True
+        """
+        envelope_json = yield from self.get_key_info(envelope_id)
+        envelope_info = json.loads(envelope_json)
+        envelope_info['forward'] = False
+        envelope_json = json.dumps(envelope_info)
+        yield from self.save_key(envelope_id, envelope_json)
+        return True
 
     @asyncio.coroutine
     def find_emitter_by_login(self, login: str) -> tuple:
@@ -569,6 +746,21 @@ class XbusBrokerFront(XbusBrokerBase):
             insert = insert.values(id=envelope_id, state='emit',
                                    emitter_id=emitter_id)
             conn.execute(insert)
+
+    @asyncio.coroutine
+    def update_envelope_state_exec(self, envelope_id: str):
+        """Internal helper method used to log the fact that an envelope has
+        been successfully received from its emitter, and is currently being
+        treated by the back-end.
+
+        :param envelope_id:
+         the UUID of the envelope
+        """
+        with (yield from self.dbengine) as conn:
+            update = envelope.update()
+            update = update.where(envelope.c.id == envelope_id)
+            update = update.values(state='exec')
+            conn.execute(update)
 
     @asyncio.coroutine
     def update_envelope_state_wait(self, envelope_id: str):

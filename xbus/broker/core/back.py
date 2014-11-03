@@ -205,7 +205,8 @@ class XbusBrokerBack(XbusBrokerBase):
     @rpc.method
     @asyncio.coroutine
     def start_event(
-            self, envelope_id: str, event_id: str, targets=None
+            self, envelope_id: str, event_id: str, type_id: str,
+            type_name: str, *, targets: list=None
     ) -> tuple:
         """Begin a new event inside an envelope opened against this broker
         backend.
@@ -220,6 +221,12 @@ class XbusBrokerBack(XbusBrokerBase):
          the broker backend (ie: already in use at the moment. We won't verify
          in the whole event history) then this method will return an error code
          instead of processing your data.
+
+        :param type_id:
+         the internal UUID that corresponds to the type of the started event.
+
+        :param type_name:
+         the name of the type of the started event.
 
         :param targets:
          the list of consumer ids you want to specifically target with this
@@ -272,11 +279,14 @@ class XbusBrokerBack(XbusBrokerBase):
 
     @rpc.method
     @asyncio.coroutine
-    def send_item(self, event_id: str, data: bytes):
+    def send_item(self, event_id: str, index: int, data: bytes):
         """Send an item to the XBUS network.
 
         :param event_id:
          event UUID previously opened onto which this item will be sent
+
+        :param index:
+         the item index number.
 
         :param data:
          the raw data of the item. This data will not be opened or
