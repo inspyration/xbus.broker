@@ -632,8 +632,10 @@ class XbusBrokerFront(XbusBrokerBase):
         """
         res = yield from self.backend.call.cancel_envelope(envelope_id)
         if res == 0:
+            yield from self.update_envelope_state_exec(envelope_id)
             return True
         else:
+            yield from self.update_envelope_state_wait(envelope_id)
             yield from self.disable_backend_forward(envelope_id)
             return False
 
