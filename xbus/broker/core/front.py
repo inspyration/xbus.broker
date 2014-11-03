@@ -206,6 +206,8 @@ class XbusBrokerFront(XbusBrokerBase):
             event_id, envelope_id, emitter_id, type_id, estimate
         )
 
+        return event_id
+
     @rpc.method
     @asyncio.coroutine
     def send_item(self, token: str, envelope_id: str, event_id: str,
