@@ -190,7 +190,8 @@ class TestNewEnvelope(TestFrontBase):
             ret = yield from client.call.start_envelope(self.token)
             client.close()
             front.close()
-            assert ret == self.envelope_id, "We should have obtained our " \
-                                            "envelope UUID!"
+            assert ret == self.envelope_id, (
+                "We should have obtained our envelope UUID!"
+            )
 
         self.loop.run_until_complete(gotest())

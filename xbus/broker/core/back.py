@@ -31,8 +31,8 @@ class XbusBrokerBack(XbusBrokerBase):
     invalidate the token and make sure no one can reuse it ever.
     """
 
-    def __init__(self, dbengine, frontsocket, socket):
-        super(XbusBrokerBack, self).__init__(dbengine)
+    def __init__(self, dbengine, frontsocket, socket, loop=None):
+        super(XbusBrokerBack, self).__init__(dbengine, loop=loop)
 
         self.frontsocket = frontsocket
         self.socket = socket
@@ -325,7 +325,7 @@ class XbusBrokerBack(XbusBrokerBase):
 
 
 @asyncio.coroutine
-def get_backserver(engine_callback, config, socket, b2fsocket):
+def get_backserver(engine_callback, config, socket, b2fsocket, loop=None):
     """A helper function that is used internally to create a running server for
     the back part of Xbus
 
@@ -341,12 +341,15 @@ def get_backserver(engine_callback, config, socket, b2fsocket):
      a string representing the socker address on which we will spawn our 0mq
      listener
 
+    :param socket:
+     the event loop the server must run with
+
     :return:
      a future that is waiting for a closed() call before being
      fired back.
     """
     dbengine = yield from engine_callback(config)
-    broker_back = XbusBrokerBack(dbengine, b2fsocket, socket)
+    broker_back = XbusBrokerBack(dbengine, b2fsocket, socket, loop=loop)
 
     redis_host = config.get('redis', 'host')
     redis_port = config.getint('redis', 'port')
@@ -356,7 +359,8 @@ def get_backserver(engine_callback, config, socket, b2fsocket):
 
     zmqserver = yield from rpc.serve_rpc(
         broker_back,
-        bind=socket
+        bind=socket,
+        loop=loop,
     )
     yield from zmqserver.wait_closed()
 

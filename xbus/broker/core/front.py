@@ -40,11 +40,11 @@ class XbusBrokerFront(XbusBrokerBase):
     backend is present.
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, dbengine, loop=None):
         # at the beginning the backend is None. Then the Front2Back will set
         # a backend in place when one comes to register itself.
         self.backend = None
-        super(XbusBrokerFront, self).__init__(*args, **kwargs)
+        super(XbusBrokerFront, self).__init__(dbengine, loop=loop)
 
     @rpc.method
     @asyncio.coroutine
@@ -501,8 +501,10 @@ class XbusBrokerFront(XbusBrokerBase):
         yield from self.update_envelope_state_cancel(envelope_id)
 
         if envelope_forward:
-            pass
-#            asyncio.async(self.backend_cancel_event(envelope_id))
+            asyncio.async(
+                self.backend_cancel_envelope(envelope_id),
+                loop=self.loop
+            )
 
         # Do nothing else for now.
         return True
@@ -892,7 +894,7 @@ class XbusBrokerFront2Back(rpc.AttrHandler):
 
 
 @asyncio.coroutine
-def get_frontserver(engine_callback, config, socket, b2fsocket):
+def get_frontserver(engine_callback, config, socket, b2fsocket, loop=None):
     """A helper function that is used internally to create a running server for
     the front part of Xbus
 
@@ -912,12 +914,15 @@ def get_frontserver(engine_callback, config, socket, b2fsocket):
      a string representing the socket address on which the front server will
      listen so that the backend will be able to register itself
 
+    :param loop:
+     the event loop this server must use
+
     :return:
      a future that is waiting for a wait_closed() call before being
      fired back.
     """
     dbengine = yield from engine_callback(config)
-    broker = XbusBrokerFront(dbengine)
+    broker = XbusBrokerFront(dbengine, loop=loop)
 
     redis_host = config.get('redis', 'host')
     redis_port = config.getint('redis', 'port')
@@ -925,14 +930,16 @@ def get_frontserver(engine_callback, config, socket, b2fsocket):
 
     frontzmqserver = yield from rpc.serve_rpc(
         broker,
-        bind=socket
+        bind=socket,
+        loop=loop
     )
 
     # prepare the socket we use to communicate between front and backend
     front2back = XbusBrokerFront2Back(broker)
     front_from_back_zqm = yield from rpc.serve_rpc(
         front2back,
-        bind=b2fsocket
+        bind=b2fsocket,
+        loop=loop,
     )
 
     coroutines = [

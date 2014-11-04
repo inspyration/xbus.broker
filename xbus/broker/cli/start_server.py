@@ -28,21 +28,38 @@ def get_engine(config):
 
 
 @asyncio.coroutine
-def start_all() -> None:
+def start_all(loop=None) -> None:
     """the real coroutine that will spawn all the coroutines
 
-    :return: None
+    :param loop:
+     the event loop you want to use
+
+    :return:
+     None
     """
     signal.signal(signal.SIGINT, signal_handler)
     config = get_config()
     front_socket_name = config.get('zmq', 'frontsocket')
     back_socket_name = config.get('zmq', 'backsocket')
     b2f_socket_name = config.get('zmq', 'b2fsocket')
+    # TODO: make sure the correct loop is prepared
     prepare_event_loop()
 
     coroutines = [
-        get_frontserver(get_engine, config, front_socket_name, b2f_socket_name),
-        get_backserver(get_engine, config, back_socket_name, b2f_socket_name),
+        get_frontserver(
+            get_engine,
+            config,
+            front_socket_name,
+            b2f_socket_name,
+            loop=loop,
+        ),
+        get_backserver(
+            get_engine,
+            config,
+            back_socket_name,
+            b2f_socket_name,
+            loop=loop,
+        ),
     ]
 
     yield from asyncio.gather(*coroutines)
@@ -51,4 +68,5 @@ def start_all() -> None:
 def start_server() -> None:
     """A helper function that is used to start the broker server
     """
-    asyncio.get_event_loop().run_until_complete(start_all())
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(start_all(loop=loop))

@@ -13,8 +13,9 @@ class XbusBrokerBase(rpc.AttrHandler):
     broker front and broker back (ie: initialize redis etc...)
     """
 
-    def __init__(self, dbengine):
+    def __init__(self, dbengine, loop=None):
         self.dbengine = dbengine
+        self.loop = loop
         self.redis_connection = None
         super(rpc.AttrHandler, self).__init__()
 
