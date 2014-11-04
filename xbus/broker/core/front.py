@@ -544,7 +544,7 @@ class XbusBrokerFront(XbusBrokerBase):
     @asyncio.coroutine
     def backend_start_event(self, envelope_id: str, event_id: str,
                             type_id: str, type_name: str) -> bool:
-        """Forward the new envelope to the backend.
+        """Forward the new event to the backend.
 
         :param envelope_id:
          the UUID of the envelope which contains the event
@@ -571,8 +571,10 @@ class XbusBrokerFront(XbusBrokerBase):
             return False
 
     @asyncio.coroutine
-    def backend_send_item(self, envelope_id, event_id, index, data):
-        """Forward the end of the event to the backend.
+    def backend_send_item(
+            self, envelope_id: str, event_id: str, index: int, data: bytes
+    ):
+        """Forward the item to the backend.
 
         :param envelope_id:
          the UUID of the envelope which contains the event
@@ -599,7 +601,7 @@ class XbusBrokerFront(XbusBrokerBase):
             return False
 
     @asyncio.coroutine
-    def backend_end_event(self, envelope_id, event_id):
+    def backend_end_event(self, envelope_id: str, event_id: str):
         """Forward the end of the event to the backend.
 
         :param envelope_id:
@@ -619,7 +621,7 @@ class XbusBrokerFront(XbusBrokerBase):
             return False
 
     @asyncio.coroutine
-    def backend_end_envelope(self, envelope_id):
+    def backend_end_envelope(self, envelope_id: str):
         """Forward the end of the envelope to the backend.
 
         :param envelope_id:

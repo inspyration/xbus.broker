@@ -39,8 +39,7 @@ class XbusBrokerBack(XbusBrokerBase):
 
         self.node_registry = {}
 
-        self.envelopes = []
-        self.events = {}
+        self.envelopes = {}
 
     @asyncio.coroutine
     def register_on_front(self):
@@ -135,8 +134,8 @@ class XbusBrokerBack(XbusBrokerBase):
             # the issue
             return False
         else:
-            role_login = token_data.get('login', None)
-            if role_login is None:
+            role_id = token_data.get('id', None)
+            if role_id is None:
                 return False
 
         # then connect to our worker's socket
@@ -145,7 +144,7 @@ class XbusBrokerBack(XbusBrokerBase):
         )
         # keep a reference to our connected worker to be able to call him
         # later-on when we have work for him to do
-        self.node_registry[role_login] = node_client
+        self.node_registry[role_id] = node_client
         return True
 
     @rpc.method
@@ -162,7 +161,8 @@ class XbusBrokerBack(XbusBrokerBase):
         :return:
          the envelop id you just started
         """
-        self.envelopes.append(envelope_id)
+        # TODO: replace new dict with a properly defined Envelope object?
+        self.envelopes[envelope_id] = {}
         return envelope_id
 
     @rpc.method
@@ -198,7 +198,6 @@ class XbusBrokerBack(XbusBrokerBase):
          the UUID of the envelope that has just been cancelled
         """
         # TODO: call all the active consumers that are concerned so they can
-        # rollback their current work on the envelope
         return envelope_id
 
     @rpc.method
@@ -248,19 +247,25 @@ class XbusBrokerBack(XbusBrokerBase):
            - success -> (0, '<event_id>')
            - failure -> (1, "No such envelope : 87654345678")
         """
-        if envelope_id in self.envelopes and not event_id in self.events:
-            res = (0, "{}".format(event_id))
+        envelope = self.envelopes.get(envelope_id, None)
 
-        else:
-            msg = ""
-            if envelope_id not in self.envelopes:
-                msg += "No such envelope : {}\n".format(envelope_id)
+        errors = []
+        if envelope is None:
+            errors.append("No such envelope : {}".format(envelope_id))
+        elif event_id in envelope:
+            errors.append("Event already started: {}".format(event_id))
 
-            if event_id not in self.events:
-                msg += "Event already started: {}\n".format(event_id)
+        if errors:
+            res = (1, "\n".join(errors))
+            return res
 
-            res = (1, msg)
+        # TODO: replace new dict with a properly defined Event object?
+        envelope[event_id] = {'type_name': type_name, 'type_id': type_id}
+        # TODO: generate the event tree and add it to the event data
+        rows = yield from self.get_event_tree(type_id)
+        # TODO: {role.id: [id of children] for role in selected_roles}
 
+        res = (0, "{}".format(event_id))
         return res
 
     @rpc.method
@@ -297,6 +302,205 @@ class XbusBrokerBack(XbusBrokerBase):
         """
         # if we have an event_id this means we already have a precomputed graph
         # for this event... so lets send the item to the corresponding nodes
+        pass
+
+    @asyncio.coroutine
+    def worker_start_event(
+            self, worker_id: str, envelope_id: str, event_id: str,
+            type_id: str, type_name: str
+    ) -> bool:
+        """Forward the new event to the workers.
+
+        :param worker_id:
+         the UUID of the target worker
+
+        :param envelope_id:
+         the UUID of the envelope which contains the event
+
+        :param event_id:
+         the generated UUID of the event
+
+        :param type_id:
+         the internal UUID that corresponds to the type of the event
+
+        :param type_name:
+         the name of the type of the started event
+
+        :return:
+         True if successful, False otherwise
+        """
+        worker = self.node_registry[worker_id]
+        envelope = self.envelopes[envelope_id]
+        event = envelope[event_id]
+        type_name = event['type_name']
+        res = yield from worker.call.start_event(
+            envelope_id, event_id, type_name
+        )
+        if res:
+            children = event[worker_id]['children']
+            for child_id in children:
+                asyncio.async(
+                    self.worker_start_event(
+                        child_id, envelope_id, event_id, type_id, type_name
+                    ),
+                    loop=self.loop
+                )
+        else:
+            # TODO: stop the envelope execution
+            return False
+
+    @asyncio.coroutine
+    def worker_send_item(
+        self, worker_id: str, envelope_id: str, event_id: str,
+        indices: list, data: bytes
+    ) -> bool:
+        """Forward the item to the workers.
+
+        :param worker_id:
+         the UUID of the target worker
+
+        :param envelope_id:
+         the UUID of the envelope which contains the event
+
+        :param event_id:
+         The UUID of the event
+
+        :param indices:
+         the item indices
+
+        :param data:
+         the item data
+
+        :return:
+         True if successful, False otherwise
+        """
+        worker = self.node_registry[worker_id]
+        envelope = self.envelopes[envelope_id]
+        event = envelope[event_id]
+        reply = yield from worker.call.send_item(
+            envelope_id, event_id, indices, data
+        )
+        if reply:
+            children = event[worker_id]['children']
+            for child_id in children:
+                # currently sends ALL items to ALL children
+                for r_indices, r_data in reply:
+                    asyncio.async(
+                        self.worker_send_item(
+                            child_id, envelope_id, event_id, r_indices, r_data
+                        ),
+                        loop=self.loop
+                    )
+        else:
+            # TODO: stop the envelope execution
+            return False
+
+    @asyncio.coroutine
+    def worker_end_event(
+            self, worker_id: str, envelope_id: str, event_id: str
+    ) -> bool:
+        """Forward the end of the event to the workers.
+
+        :param worker_id:
+         the UUID of the target worker
+
+        :param envelope_id:
+         the UUID of the envelope which contains the event
+
+        :param event_id:
+         the UUID of the event
+
+        :return:
+         True if successful, False otherwise
+        """
+        worker = self.node_registry[worker_id]
+        envelope = self.envelopes[envelope_id]
+        event = envelope[event_id]
+        reply = yield from worker.call.end_event(
+            envelope_id, event_id
+        )
+        if reply:
+            children = event[worker_id]['children']
+            for child_id in children:
+                asyncio.async(
+                    self.worker_end_event(
+                        child_id, envelope_id, event_id
+                    ),
+                    loop=self.loop
+                )
+        else:
+            # TODO: stop the envelope execution
+            return False
+
+    @asyncio.coroutine
+    def worker_end_envelope(
+        self, worker_id: str, envelope_id: str, event_id: str
+    ) -> bool:
+        """Forward the end of the envelope to the backend.
+
+        :param worker_id:
+         the UUID of the target worker
+
+        :param envelope_id:
+         the UUID of the envelope
+
+        :param event_id:
+         the UUID of the event to which belongs the target worker. When an
+         envelope is ended, this coroutine will be initially called on each
+         starting node of each event of the envelope.
+
+        :return:
+         True if successful, False otherwise
+        """
+        worker = self.node_registry[worker_id]
+        envelope = self.envelopes[envelope_id]
+        event = envelope[event_id]
+        reply = yield from worker.call.end_envelope(envelope_id)
+        if reply:
+            children = event[worker_id]['children']
+            for child_id in children:
+                asyncio.async(
+                    self.worker_end_envelope(
+                        child_id, envelope_id
+                    ),
+                    loop=self.loop
+                )
+        else:
+            # TODO: stop the envelope execution
+            return False
+
+    @asyncio.coroutine
+    def worker_cancel_envelope(self, worker_id, envelope_id):
+        """Forward the cancellation of the envelope to the workers.
+
+        :param worker_id:
+         the UUID of the target worker
+
+        :param envelope_id:
+         the UUID of the envelope
+
+        :return:
+         True if successful, False otherwise
+        """
+
+        # TODO: stop the event execution
+        pass
+
+    @rpc.method
+    def get_event_tree(self, type_id: str) -> list:
+        """internal helper method used to find all nodes and the links
+        between them that constitute the execution tree of an event type.
+
+        See xbus_get_event_tree in xbus_monitor/xbus/monitor/scripts/func.sql
+
+        :param type_id
+         the UUID that corresponds to the type of the event.
+
+        :return:
+         the event nodes, as a list of 4-tuples containing
+         (id, service_id, is_start, child_ids)
+        """
+        # TODO
         pass
 
     @asyncio.coroutine
