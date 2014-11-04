@@ -762,7 +762,7 @@ class XbusBrokerFront(XbusBrokerBase):
             insert = envelope.insert()
             insert = insert.values(id=envelope_id, state='emit',
                                    emitter_id=emitter_id)
-            conn.execute(insert)
+            yield from conn.execute(insert)
 
     @asyncio.coroutine
     def update_envelope_state_exec(self, envelope_id: str):
@@ -777,7 +777,7 @@ class XbusBrokerFront(XbusBrokerBase):
             update = envelope.update()
             update = update.where(envelope.c.id == envelope_id)
             update = update.values(state='exec')
-            conn.execute(update)
+            yield from conn.execute(update)
 
     @asyncio.coroutine
     def update_envelope_state_wait(self, envelope_id: str):
@@ -792,7 +792,7 @@ class XbusBrokerFront(XbusBrokerBase):
             update = envelope.update()
             update = update.where(envelope.c.id == envelope_id)
             update = update.values(state='wait')
-            conn.execute(update)
+            yield from conn.execute(update)
 
     @asyncio.coroutine
     def update_envelope_state_cancel(self, envelope_id: str):
@@ -806,7 +806,7 @@ class XbusBrokerFront(XbusBrokerBase):
             update = envelope.update()
             update = update.where(envelope.c.id == envelope_id)
             update = update.values(state='canc')
-            conn.execute(update)
+            yield from conn.execute(update)
 
     @asyncio.coroutine
     def log_new_event(self, event_id: str, envelope_id: str, emitter_id: str,
@@ -835,7 +835,7 @@ class XbusBrokerFront(XbusBrokerBase):
             insert = insert.values(id=event_id, envelope_id=envelope_id,
                                    emitter_id=emitter_id, type_id=type_id,
                                    estimated_items=estimate)
-            conn.execute(insert)
+            yield from conn.execute(insert)
 
     @asyncio.coroutine
     def update_event_sent_items_count(self, event_id: str, sent_items: int):
@@ -852,7 +852,7 @@ class XbusBrokerFront(XbusBrokerBase):
             update = event.update()
             update = update.where(event.c.id == event_id)
             update = update.values(sent_items=sent_items)
-            conn.execute(update)
+            yield from conn.execute(update)
 
     @asyncio.coroutine
     def log_sent_item(self, event_id: str, index: int, data: bytes):
@@ -871,7 +871,7 @@ class XbusBrokerFront(XbusBrokerBase):
         with (yield from self.dbengine) as conn:
             insert = item.insert()
             insert = insert.values(event_id=event_id, index=index, data=data)
-            conn.execute(insert)
+            yield from conn.execute(insert)
 
 
 class XbusBrokerFront2Back(rpc.AttrHandler):
