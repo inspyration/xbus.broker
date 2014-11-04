@@ -124,7 +124,10 @@ class XbusBrokerFront(XbusBrokerBase):
 
         yield from self.log_new_envelope(envelope_id, emitter_id)
 
-#        asyncio.async(self.backend_start_envelope(envelope_id))
+        asyncio.async(
+            self.backend_start_envelope(envelope_id),
+            loop=self.loop
+        )
 
         return envelope_id
 
@@ -211,7 +214,10 @@ class XbusBrokerFront(XbusBrokerBase):
 
         if envelope_forward:
             pass
-#            asyncio.async(self.backend_start_event(envelope_id, event_id))
+            asyncio.async(
+                self.backend_start_event(envelope_id, event_id),
+                loop=self.loop
+            )
 
         return event_id
 
@@ -284,9 +290,10 @@ class XbusBrokerFront(XbusBrokerBase):
 
         if envelope_forward:
             pass
-#            asyncio.async(
-#                self.backend_send_item(envelope_id, event_id, index, data)
-#            )
+            asyncio.async(
+                self.backend_send_item(envelope_id, event_id, index, data),
+                loop=self.loop
+            )
 
         return True
 
@@ -355,7 +362,10 @@ class XbusBrokerFront(XbusBrokerBase):
 
         if envelope_forward:
             pass
-#            asyncio.async(self.backend_end_event(envelope_id, event_id))
+            asyncio.async(
+                self.backend_end_event(envelope_id, event_id),
+                loop=self.loop
+            )
 
         # Do nothing else for now.
         return True
@@ -427,7 +437,10 @@ class XbusBrokerFront(XbusBrokerBase):
         # the back-end's replies ('wait' or 'exec').
 
         if envelope_forward:
-#            asyncio.async(self.backend_end_envelope(envelope_id))
+            asyncio.async(
+                self.backend_end_envelope(envelope_id),
+                loop=self.loop
+            )
             pass
         else:
             yield from self.update_envelope_state_wait(envelope_id)
@@ -558,7 +571,7 @@ class XbusBrokerFront(XbusBrokerBase):
             return False
 
     @asyncio.coroutine
-    def backend_send_data(self, envelope_id, event_id, index, data):
+    def backend_send_item(self, envelope_id, event_id, index, data):
         """Forward the end of the event to the backend.
 
         :param envelope_id:
@@ -571,12 +584,12 @@ class XbusBrokerFront(XbusBrokerBase):
          the item index
 
         :param data:
-         the index data
+         the item data
 
         :return:
          True if successful, False otherwise
         """
-        code, msg = yield from self.backend.call.end_event(
+        code, msg = yield from self.backend.call.send_item(
             event_id, index, data
         )
         if code == 0:

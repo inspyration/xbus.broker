@@ -112,8 +112,7 @@ class XbusBrokerBack(XbusBrokerBase):
     @asyncio.coroutine
     def register_node(self, token: str, uri: str) -> bool:
         """Register a worker / consumer on the broker. This worker will be
-        known by the
-        broker and called when some work is available.
+        known by the broker and called when some work is available.
 
         :param token:
          the token your worker previously obtained by using the
