@@ -691,9 +691,10 @@ class XbusBrokerFront(XbusBrokerBase):
                             emitter.c.profile_id))
             query = query.where(emitter.c.login == login).limit(1)
 
-            rows = yield from conn.execute(query)
-            if len(rows) > 0:
-                return rows[0]
+            cr = yield from conn.execute(query)
+            row = yield from cr.first()
+            if row:
+                return row.as_tuple()
             else:
                 return None, None, None
 
@@ -714,9 +715,10 @@ class XbusBrokerFront(XbusBrokerBase):
             query = query.where(event_type.c.name == name)
             query = query.limit(1)
 
-            rows = yield from conn.execute(query)
-            if len(rows) > 0:
-                return rows[0]
+            cr = yield from conn.execute(query)
+            row = yield from cr.first()
+            if row:
+                return row.as_tuple()
             else:
                 return None,
 
@@ -739,16 +741,17 @@ class XbusBrokerFront(XbusBrokerBase):
          False otherwise
         """
         with (yield from self.dbengine) as conn:
-            query = select(func.count(emitter_profile_event_type_rel))
+            query = select((func.count(),)).select_from(emitter_profile_event_type_rel)
             query = query.where(
                 and_(
                     emitter_profile_event_type_rel.c.profile_id == profile_id,
-                    emitter_profile_event_type_rel.c.type_id == type_id
+                    emitter_profile_event_type_rel.c.event_id == type_id
                 )
             )
 
-            res = yield from conn.execute(query)
-            return True if res > 0 else False
+            cr = yield from conn.execute(query)
+            res = yield from cr.first()
+            return True if res[0] > 0 else False
 
     @asyncio.coroutine
     def log_new_envelope(self, envelope_id: str, emitter_id: str):
@@ -762,8 +765,10 @@ class XbusBrokerFront(XbusBrokerBase):
         """
         with (yield from self.dbengine) as conn:
             insert = envelope.insert()
-            insert = insert.values(id=envelope_id, state='emit',
-                                   emitter_id=emitter_id)
+            insert = insert.values(
+                id=envelope_id, state='emit', emitter_id=emitter_id,
+                posted_date=func.localtimestamp()
+            )
             yield from conn.execute(insert)
 
     @asyncio.coroutine

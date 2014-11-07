@@ -526,12 +526,12 @@ class XbusBrokerBack(XbusBrokerBase):
             query = select(role.c.id, role.c.password, role.c.service_id)
             query = query.where(role.c.login == login).limit(1)
 
-            res = yield from conn.execute(query)
-            res = res[0]
-            if res is None:
-                res = (None, None, None)
-
-            return res
+            cr = yield from conn.execute(query)
+            row = yield from cr.first()
+            if row:
+                return row.as_tuple()
+            else:
+                return None, None, None
 
 
 @asyncio.coroutine
