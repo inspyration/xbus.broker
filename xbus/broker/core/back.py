@@ -199,6 +199,7 @@ class XbusBrokerBack(XbusBrokerBase):
          the UUID of the envelope that has just been cancelled
         """
         # TODO: call all the active consumers that are concerned so they can
+        # rollback their current work on the envelope
         return envelope_id
 
     @rpc.method
@@ -253,6 +254,7 @@ class XbusBrokerBack(XbusBrokerBase):
         errors = []
         if envelope is None:
             errors.append("No such envelope : {}".format(envelope_id))
+
         elif event_id in envelope:
             errors.append("Event already started: {}".format(event_id))
 
@@ -264,6 +266,7 @@ class XbusBrokerBack(XbusBrokerBase):
 
         # TODO: generate the event tree and add it to the event data
         rows = yield from self.get_event_tree(type_id)
+
         # TODO: {role.id: [id of children] for role in selected_roles}
 
         res = (0, "{}".format(event_id))
