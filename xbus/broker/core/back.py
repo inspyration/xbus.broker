@@ -523,7 +523,7 @@ class XbusBrokerBack(XbusBrokerBase):
          the tuple will contain (None, None, None)
         """
         with (yield from self.dbengine) as conn:
-            query = select(role.c.id, role.c.password, role.c.service_id)
+            query = select((role.c.id, role.c.password, role.c.service_id))
             query = query.where(role.c.login == login).limit(1)
 
             cr = yield from conn.execute(query)
