@@ -16,13 +16,13 @@ class XbusBrokerBase(rpc.AttrHandler):
     def __init__(self, dbengine, loop=None):
         self.dbengine = dbengine
         self.loop = loop
-        self.redis_connection = None
+        self.redis_pool = None
         super(rpc.AttrHandler, self).__init__()
 
     @asyncio.coroutine
     def prepare_redis(self, redis_host, redis_port):
-        self.redis_connection = yield from aioredis.create_connection(
-            (redis_host, redis_port)
+        self.redis_pool = yield from aioredis.create_pool(
+            (redis_host, redis_port), loop=self.loop
         )
 
     @staticmethod
@@ -42,9 +42,8 @@ class XbusBrokerBase(rpc.AttrHandler):
         try:
             # unicode objects must be encoded before hashing so we encode to
             # utf-8
-            yield from self.redis_connection.execute(
-                'set', key, info
-            )
+            with (yield from self.redis_pool) as conn:
+                yield from conn.set(key, info)
         except (aioredis.ReplyError, aioredis.ProtocolError):
             return False
         return True
@@ -52,19 +51,17 @@ class XbusBrokerBase(rpc.AttrHandler):
     @asyncio.coroutine
     def get_key_info(self, key: str) -> str:
         try:
-            info = yield from self.redis_connection.execute(
-                'get', key
-            )
+            with (yield from self.redis_pool) as conn:
+                info = yield from conn.get(key)
         except (aioredis.ReplyError, aioredis.ProtocolError):
             return None
-        return info
+        return info.decode("utf-8")
 
     @asyncio.coroutine
     def destroy_key(self, key: str) -> bool:
         try:
-            yield from self.redis_connection.execute(
-                'del', key
-            )
+            with (yield from self.redis_pool) as conn:
+                yield from conn.delete(key)
         except (aioredis.ReplyError, aioredis.ProtocolError):
             return False
         return True

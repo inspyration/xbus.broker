@@ -946,7 +946,7 @@ def get_frontserver(engine_callback, config, socket, b2fsocket, loop=None):
 
     redis_host = config.get('redis', 'host')
     redis_port = config.getint('redis', 'port')
-    broker.prepare_redis(redis_host, redis_port)
+    yield from broker.prepare_redis(redis_host, redis_port)
 
     frontzmqserver = yield from rpc.serve_rpc(
         broker,
