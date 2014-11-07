@@ -43,7 +43,6 @@ def start_all(loop=None) -> None:
     back_socket_name = config.get('zmq', 'backsocket')
     b2f_socket_name = config.get('zmq', 'b2fsocket')
     # TODO: make sure the correct loop is prepared
-    prepare_event_loop()
 
     coroutines = [
         get_frontserver(
@@ -62,11 +61,12 @@ def start_all(loop=None) -> None:
         ),
     ]
 
-    yield from asyncio.gather(*coroutines)
+    yield from asyncio.gather(*coroutines, loop=loop)
 
 
 def start_server() -> None:
     """A helper function that is used to start the broker server
     """
+    prepare_event_loop()
     loop = asyncio.get_event_loop()
     loop.run_until_complete(start_all(loop=loop))
