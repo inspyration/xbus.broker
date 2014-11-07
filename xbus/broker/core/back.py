@@ -487,7 +487,7 @@ class XbusBrokerBack(XbusBrokerBase):
         # TODO: stop the event execution
         pass
 
-    @rpc.method
+    @asyncio.coroutine
     def get_event_tree(self, type_id: str) -> list:
         """internal helper method used to find all nodes and the links
         between them that constitute the execution tree of an event type.
