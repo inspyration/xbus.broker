@@ -10,6 +10,104 @@ from xbus.broker.model import permission
 from xbus.broker.model import user_group_table
 from xbus.broker.model import group_permission_table
 from xbus.broker.model import gen_password
+from xbus.broker.model.emission import emitter_profile
+from xbus.broker.model import emitter
+from xbus.broker.model.event import event_type
+from xbus.broker.model.emission import emitter_profile_event_type_rel
+from xbus.broker.model.service import service
+from xbus.broker.model import role
+from xbus.broker.model.event import event_node
+from xbus.broker.model.event import event_node_rel
+
+
+def setup_xbusdemo(engine):
+    emitter_profile_id = engine.execute(
+        emitter_profile.insert().returning(emitter_profile.c.id).values(
+            name='test_profile'
+        )
+    ).first()[0]
+
+    engine.execute(
+        emitter.insert().returning(emitter.c.id).values(
+            login="test_emitter",
+            password=gen_password("password"),
+            profile_id=emitter_profile_id
+        )
+    )
+
+    event_type_id = engine.execute(
+        event_type.insert().returning(event_type.c.id).values(
+            name='test_event'
+        )
+    ).first()[0]
+
+    engine.execute(
+        emitter_profile_event_type_rel.insert().values(
+            profile_id=emitter_profile_id,
+            event_id=event_type_id
+        )
+    )
+
+    consumer_service_id = engine.execute(
+        service.insert().returning(service.c.id).values(
+            name='consumer_service',
+            is_consumer=True
+        )
+    ).first()[0]
+
+    worker_service_id = engine.execute(
+        service.insert().returning(service.c.id).values(
+            name='worker_service',
+            is_consumer=False
+        )
+    ).first()[0]
+
+    consumer_role_id = engine.execute(
+        role.insert().returning(role.c.id).values(
+            login='consumer_role',
+            password=gen_password("password"),
+            service_id=consumer_service_id,
+        )
+    ).first()[0]
+
+    worker_role_id = engine.execute(
+        role.insert().returning(role.c.id).values(
+            login='worker_role',
+            password=gen_password("password"),
+            service_id=worker_service_id,
+        )
+    ).first()[0]
+
+    consumer_node_id = engine.execute(
+        event_node.insert().returning(event_node.c.id).values(
+            service_id=consumer_service_id,
+            type_id=event_type_id,
+            is_start=True
+        )
+    ).first()[0]
+
+    parent_node_id = engine.execute(
+        event_node.insert().returning(event_node.c.id).values(
+            service_id=worker_service_id,
+            type_id=event_type_id,
+            is_start=True
+        )
+    ).first()[0]
+
+    child_node_id = engine.execute(
+        event_node.insert().returning(event_node.c.id).values(
+            service_id=consumer_service_id,
+            type_id=event_type_id,
+            is_start=False
+        )
+    ).first()[0]
+
+    engine.execute(
+        event_node_rel.insert().values(
+            parent_id=parent_node_id,
+            child_id=child_node_id
+        )
+    )
 
 
 def setup_usergroupperms(engine):
@@ -106,3 +204,4 @@ def setup_app(config):
     # any other data to be created in the database should be put here
     # like a default user with admin rights
     setup_usergroupperms(dbengine)
+    setup_xbusdemo(dbengine)
