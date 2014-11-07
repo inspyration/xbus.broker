@@ -29,7 +29,7 @@ event_node = Table(
            nullable=False),
     Column('type_id', UUID, ForeignKey('event_type.id', ondelete='RESTRICT'),
            index=True, nullable=False),
-    Column('start', Boolean, server_default='FALSE'),
+    Column('is_start', Boolean, server_default='FALSE'),
 )
 
 event_node_rel = Table(

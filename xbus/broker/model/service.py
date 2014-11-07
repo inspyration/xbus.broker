@@ -17,6 +17,6 @@ service = Table(
     'service', metadata,
     Column('id', UUID, default=uuid4, primary_key=True),
     Column('name', Unicode(length=64), index=True, unique=True),
-    Column('consumer', Boolean, server_default='FALSE'),
+    Column('is_consumer', Boolean, server_default='FALSE'),
     Column('description', Text),
 )
