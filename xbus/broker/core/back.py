@@ -12,6 +12,7 @@ from xbus.broker.model import role
 from xbus.broker.model import validate_password
 
 from xbus.broker.core import XbusBrokerBase
+from xbus.broker.core import Event
 
 
 class BrokerBackError(Exception):
@@ -259,8 +260,8 @@ class XbusBrokerBack(XbusBrokerBase):
             res = (1, "\n".join(errors))
             return res
 
-        # TODO: replace new dict with a properly defined Event object?
-        envelope[event_id] = {'type_name': type_name, 'type_id': type_id}
+        envelope[event_id] = Event(event_id, type_name, type_id)
+
         # TODO: generate the event tree and add it to the event data
         rows = yield from self.get_event_tree(type_id)
         # TODO: {role.id: [id of children] for role in selected_roles}
