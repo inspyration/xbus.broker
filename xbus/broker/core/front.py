@@ -65,7 +65,6 @@ class XbusBrokerFront(XbusBrokerBase):
 
         emitter_row = yield from self.find_emitter_by_login(login)
         emitter_id, emitter_pwd, emitter_profile_id = emitter_row
-
         if validate_password(password, emitter_pwd):
             token = self.new_token()
             info = {'id': emitter_id.hex, 'login': login,
@@ -215,7 +214,9 @@ class XbusBrokerFront(XbusBrokerBase):
         if envelope_forward:
             pass
             asyncio.async(
-                self.backend_start_event(envelope_id, event_id),
+                self.backend_start_event(
+                    envelope_id, event_id, type_id, event_name
+                ),
                 loop=self.loop
             )
 
@@ -534,10 +535,8 @@ class XbusBrokerFront(XbusBrokerBase):
         """
         res = yield from self.backend.call.start_envelope(envelope_id)
         if res:
-            print("Backend callback OK!")
             return True
         else:
-            print("Backend callback KO?")
             yield from self.disable_backend_forward(envelope_id)
             return False
 
@@ -632,8 +631,10 @@ class XbusBrokerFront(XbusBrokerBase):
         """
         res = yield from self.backend.call.end_envelope(envelope_id)
         if res == 0:
+            yield from self.update_envelope_state_exec(envelope_id)
             return True
         else:
+            yield from self.update_envelope_state_wait(envelope_id)
             yield from self.disable_backend_forward(envelope_id)
             return False
 
@@ -647,13 +648,12 @@ class XbusBrokerFront(XbusBrokerBase):
         :return:
          True if successful, False otherwise
         """
+        yield from self.disable_backend_forward(envelope_id)
+        yield from self.update_envelope_state_wait(envelope_id)
         res = yield from self.backend.call.cancel_envelope(envelope_id)
         if res == 0:
-            yield from self.update_envelope_state_exec(envelope_id)
             return True
         else:
-            yield from self.update_envelope_state_wait(envelope_id)
-            yield from self.disable_backend_forward(envelope_id)
             return False
 
     @asyncio.coroutine
