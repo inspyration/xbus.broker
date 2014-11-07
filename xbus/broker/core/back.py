@@ -10,6 +10,7 @@ from sqlalchemy.sql import select
 
 from xbus.broker.model import role
 from xbus.broker.model import validate_password
+from xbus.broker.model.helpers import get_event_tree
 
 from xbus.broker.core import XbusBrokerBase
 from xbus.broker.core import Event
@@ -502,10 +503,12 @@ class XbusBrokerBack(XbusBrokerBase):
 
         :return:
          the event nodes, as a list of 4-tuples containing
-         (id, service_id, is_start, child_ids)
+         (id, service_id, is_start, [child_id, child_id, ...])
         """
-        # TODO
-        pass
+        with self.dbengine as conn:
+            event_tree = yield from get_event_tree(conn, type_id)
+
+        raise NotImplementedError("Unfinished business")
 
     @asyncio.coroutine
     def find_role_by_login(self, login: str) -> tuple:
