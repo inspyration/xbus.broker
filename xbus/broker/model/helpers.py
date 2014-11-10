@@ -6,12 +6,10 @@ from sqlalchemy import func
 from sqlalchemy import select
 from sqlalchemy import desc
 from sqlalchemy import join
-from sqlalchemy.dialects.postgres import ARRAY
-from sqlalchemy import String
 
 from xbus.broker.model.event import event_node
 from xbus.broker.model.event import event_node_rel
-from xbus.broker.model.types import UUID
+from xbus.broker.model.types import UUIDArray
 
 
 @asyncio.coroutine
@@ -23,6 +21,7 @@ def get_event_tree(dbengine, event_type_id):
             event_node.c.is_start,
             func.array_agg(
                 event_node_rel.c.child_id,
+                type_=UUIDArray(remove_null=True)
             ).label('child_ids'),
         ]
     )
@@ -41,5 +40,4 @@ def get_event_tree(dbengine, event_type_id):
     query = query.order_by(desc(event_node.c.is_start))
     cr = yield from dbengine.execute(query)
     res = yield from cr.fetchall()
-    print(res)
     return res

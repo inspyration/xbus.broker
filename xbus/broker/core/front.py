@@ -67,8 +67,8 @@ class XbusBrokerFront(XbusBrokerBase):
         emitter_id, emitter_pwd, emitter_profile_id = emitter_row
         if validate_password(password, emitter_pwd):
             token = self.new_token()
-            info = {'id': emitter_id.hex, 'login': login,
-                    'profile_id': emitter_profile_id.hex}
+            info = {'id': emitter_id, 'login': login,
+                    'profile_id': emitter_profile_id}
             info_json = json.dumps(info)
             yield from self.save_key(token, info_json)
 
@@ -187,7 +187,7 @@ class XbusBrokerFront(XbusBrokerBase):
             return ""
 
         event_type_row = yield from self.find_event_type_by_name(event_name)
-        type_id = event_type_row[0].hex
+        type_id = event_type_row[0]
 
         access = yield from self.check_event_access(profile_id, type_id)
         if access is False:

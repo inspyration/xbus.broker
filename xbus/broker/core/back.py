@@ -263,7 +263,8 @@ class XbusBrokerBack(XbusBrokerBase):
             res = (1, "\n".join(errors))
             return res
 
-        envelope[event_id] = Event(event_id, type_name, type_id)
+        event = Event(event_id, type_name, type_id)
+        envelope[event_id] = event
 
         # TODO: generate the event tree and add it to the event data
         rows = yield from self.get_event_tree(type_id)
@@ -338,7 +339,6 @@ class XbusBrokerBack(XbusBrokerBase):
         worker = self.node_registry[worker_id]
         envelope = self.envelopes[envelope_id]
         event = envelope[event_id]
-        type_name = event['type_name']
         res = yield from worker.call.start_event(
             envelope_id, event_id, type_name
         )
@@ -508,16 +508,7 @@ class XbusBrokerBack(XbusBrokerBase):
         """
         with (yield from self.dbengine) as conn:
             event_tree = yield from get_event_tree(conn, type_id)
-
-        res = []
-        for node in event_tree:
-            child_ids = node['child_ids'][1:-1]
-            child_list = child_ids.split(', ')
-            child_list = list(filter(lambda x: x != "NULL", child_list))
-            res.append((
-                node['id'], node['service_id'], node['is_start'], child_list
-            ))
-        return res
+        return event_tree
 
     @asyncio.coroutine
     def find_role_by_login(self, login: str) -> tuple:
