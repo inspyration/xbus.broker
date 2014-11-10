@@ -5,6 +5,7 @@ import asyncio
 import json
 import aiozmq
 from aiozmq import rpc
+from collections import defaultdict
 
 from sqlalchemy.sql import select
 
@@ -39,6 +40,7 @@ class XbusBrokerBack(XbusBrokerBase):
         self.frontsocket = frontsocket
         self.socket = socket
 
+        self.active_roles = defaultdict(set)
         self.node_registry = {}
 
         self.envelopes = {}
@@ -106,7 +108,24 @@ class XbusBrokerBack(XbusBrokerBase):
         :return:
          True if successful, False otherwise
         """
-        res = yield from self.destroy_key(token)
+        token_data = yield from self.get_key_info(token)
+
+        if token_data is None:
+            # token was invalid, return False to inform our potential worker of
+            # the issue
+            return False
+        else:
+            role_id = token_data.get('id', None)
+            service_id = token_data.get('service_id', None)
+
+            service_roles = self.active_roles[service_id]
+            if role_id in service_roles:
+                service_roles.remove(role_id)
+            try:
+                del self.node_registry[role_id]
+            except KeyError:
+                pass
+            res = yield from self.destroy_key(token)
         return res
 
     @rpc.method
@@ -147,7 +166,37 @@ class XbusBrokerBack(XbusBrokerBase):
         # keep a reference to our connected worker to be able to call him
         # later-on when we have work for him to do
         self.node_registry[role_id] = node_client
-        return True
+        res = yield from self.ready(token)
+        return res
+
+    @rpc.method
+    @asyncio.coroutine
+    def ready(self, token: str) -> bool:
+        """Register a worker / consumer on the broker. This worker will be
+        called when some work is available.
+
+        :param token:
+         the token your worker previously obtained by using the
+         :meth:`XbusBrokerBack.login` method
+        """
+
+        token_data = yield from self.get_key_info(token)
+
+        if token_data is None:
+            # token was invalid, return False to inform our potential worker of
+            # the issue
+            return False
+        else:
+            role_id = token_data.get('id', None)
+            service_id = token_data.get('service_id', None)
+            if role_id is None or service_id is None:
+                return False
+
+            if role_id not in self.node_registry:
+                return False
+            service_roles = self.active_roles[service_id]
+            service_roles.add(role_id)
+            return True
 
     @rpc.method
     @asyncio.coroutine
@@ -268,9 +317,32 @@ class XbusBrokerBack(XbusBrokerBase):
 
         # TODO: generate the event tree and add it to the event data
         rows = yield from self.get_event_tree(type_id)
-        print(rows)
+        nodes = defaultdict(dict)
+        start = []
+        for node_id, service_id, is_start, child_ids in rows:
+            service_roles = self.active_roles[service_id]
+            if start:
+                start.append(node_id)
+            if child_ids:     # Workers
+                if not service_roles:
+                    return False
+                role_id = service_roles.pop()
+                node = nodes[role_id]
+                node['node_id'] = node_id
+                node['role_id'] = role_id
+                node['children'] = {cid: nodes[cid] for cid in child_ids}
+            else:             # Consumers
+                pass
 
-        # TODO: {role.id: [id of children] for role in selected_roles}
+        event.set_graph(nodes, start)
+
+        for node_id in start:
+            asyncio.async(
+                self.worker_start_event(
+                    node_id, envelope_id, event_id, type_id, type_name
+                ),
+                loop=self.loop
+            )
 
         res = (0, "{}".format(event_id))
         return res

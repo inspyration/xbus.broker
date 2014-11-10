@@ -14,3 +14,11 @@ class Event(object):
         self.uuid = uuid
         self.type_name = type_name
         self.type_id = type_id
+        self._nodes = {}
+
+    def set_graph(self, nodes, start):
+        self._nodes = nodes
+        self.start = start
+
+    def __getitem__(self, key):
+        return self._nodes[key]
