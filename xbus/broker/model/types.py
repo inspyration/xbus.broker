@@ -35,7 +35,7 @@ class UUID(TypeDecorator):
         if value is None:
             return value
         else:
-            return value.strip('-')
+            return value.replace('-', '')
 
 
 class UUIDArray(TypeDecorator):
@@ -71,7 +71,7 @@ class UUIDArray(TypeDecorator):
         else:
             if dialect.name == 'postgresql':
                 value = ''.join(value)
-            res = value.strip('{-}').split(',')
+            res = value.strip('{}').replace('-', '').split(',')
             if len(res) == 1 and res[0] == '':
                 return []
             elif self.remove_null:
