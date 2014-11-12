@@ -11,6 +11,9 @@ Contents:
 .. toctree::
    :maxdepth: 2
 
+   presentation.rst
+   architecture.rst
+   semantics.rst
    autodoc.rst
 
 Indices and tables
