@@ -134,7 +134,7 @@ class TestFrontBase(unittest.TestCase):
          a zmqserver future you can yield from. Don't forget to
          close() it when you are done with it
         """
-        broker = XbusBrokerFront(None)
+        broker = XbusBrokerFront(None, loop=self.loop)
         print(dir(broker))
 
         for attr, value in attrs.items():
