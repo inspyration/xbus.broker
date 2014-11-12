@@ -158,7 +158,7 @@ class XbusBrokerBack(XbusBrokerBase):
 
         :param envelope_id:
          the UUID of the envelop you want to start
-        expressed as a string
+         expressed as a string
 
         :return:
          the envelop id you just started
