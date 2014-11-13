@@ -1,5 +1,7 @@
-Overview
-========
+.. _general_presentation:
+
+General Presentation
+====================
 
 Xbus is an Enterprise service bus. As such it aims to help IT departments
 achieve a better application infrastructure layout by providing a way to

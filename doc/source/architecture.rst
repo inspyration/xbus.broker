@@ -1,3 +1,5 @@
+.. _architecture_overview:
+
 Architecture overview
 =====================
 
@@ -19,12 +21,16 @@ socket while workers and consumers use the backend socket.
 When you start an xbus server it will generally start one frontend and one
 backend attached to it.
 
+.. _frontend:
+
 Frontend
 --------
 
 :class:`xbus.broker.core.front.XbusBrokerFront` is the component that handles
 all emitter connexions and provides the emitter API. It operates on its own
 socket (by default listening on TCP/1984
+
+.. _backend:
 
 Backend
 -------
