@@ -12,6 +12,7 @@ from sqlalchemy.sql import select
 from xbus.broker.model import role
 from xbus.broker.model import validate_password
 from xbus.broker.model.helpers import get_event_tree
+from xbus.broker.model.helpers import get_consumer_roles
 
 from xbus.broker.core import XbusBrokerBase
 from xbus.broker.core import Event
@@ -319,20 +320,26 @@ class XbusBrokerBack(XbusBrokerBase):
         rows = yield from self.get_event_tree(type_id)
         nodes = defaultdict(dict)
         start = []
-        for node_id, service_id, is_start, child_ids in rows:
+        for row in rows:
+            node_id, service_id, is_start, child_ids = row.as_tuple()
+            node = nodes[node_id]
+            node['node_id'] = node_id
             service_roles = self.active_roles[service_id]
-            if start:
-                start.append(node_id)
+            if is_start:
+                start.append(node)
             if child_ids:     # Workers
                 if not service_roles:
                     return False
                 role_id = service_roles.pop()
-                node = nodes[role_id]
-                node['node_id'] = node_id
+                node['consumer'] = False
                 node['role_id'] = role_id
                 node['children'] = {cid: nodes[cid] for cid in child_ids}
             else:             # Consumers
-                pass
+                node['consumer'] = True
+                node['role_ids'] = tuple(service_roles)
+                consumers = self.consumers[service_id]
+                inactive_consumers = consumers - service_roles
+                # TODO do something with these...
 
         event.set_graph(nodes, start)
 
@@ -581,6 +588,15 @@ class XbusBrokerBack(XbusBrokerBase):
         with (yield from self.dbengine) as conn:
             event_tree = yield from get_event_tree(conn, type_id)
         return event_tree
+
+    @asyncio.coroutine
+    def init_consumers(self) -> bool:
+        with (yield from self.dbengine) as conn:
+            consumer_roles = yield from get_consumer_roles(conn)
+        for row in consumer_roles:
+            service_id, role_ids = row.as_tuple()
+            self.consumers[service_id] = set(role_ids)
+        return True
 
     @asyncio.coroutine
     def find_role_by_login(self, login: str) -> tuple:
