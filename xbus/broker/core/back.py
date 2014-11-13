@@ -89,14 +89,13 @@ class XbusBrokerBack(XbusBrokerBase):
 
         role_row = yield from self.find_role_by_login(login)
         role_id, role_pwd, service_id = role_row
-        if validate_password(role_pwd, password):
+        if validate_password(password, role_pwd):
             token = self.new_token()
             info = {'id': role_id, 'login': login, 'service_id': service_id}
             info_json = json.dumps(info)
             yield from self.save_key(token, info_json)
         else:
             token = ""
-
         return token
 
     @rpc.method
@@ -111,7 +110,8 @@ class XbusBrokerBack(XbusBrokerBase):
         :return:
          True if successful, False otherwise
         """
-        token_data = yield from self.get_key_info(token)
+        token_json = yield from self.get_key_info(token)
+        token_data = json.loads(token_json)
 
         if token_data is None:
             # token was invalid, return False to inform our potential worker of
@@ -151,7 +151,8 @@ class XbusBrokerBack(XbusBrokerBase):
          False if something went wrong during registration and the broker
          does not recognize the worker as being part of its active graph.
         """
-        token_data = yield from self.get_key_info(token)
+        token_json = yield from self.get_key_info(token)
+        token_data = json.loads(token_json)
 
         if token_data is None:
             # token was invalid, return False to inform our potential worker of
@@ -183,7 +184,8 @@ class XbusBrokerBack(XbusBrokerBase):
          :meth:`XbusBrokerBack.login` method
         """
 
-        token_data = yield from self.get_key_info(token)
+        token_json = yield from self.get_key_info(token)
+        token_data = json.loads(token_json)
 
         if token_data is None:
             # token was invalid, return False to inform our potential worker of
@@ -422,7 +424,9 @@ class XbusBrokerBack(XbusBrokerBase):
 
     @rpc.method
     @asyncio.coroutine
-    def send_item(self, event_id: str, index: int, data: bytes):
+    def send_item(
+            self, envelope_id: str, event_id: str, index: int, data: bytes
+    ) -> tuple:
         """Send an item to the XBUS network.
 
         :param event_id:

@@ -591,7 +591,7 @@ class XbusBrokerFront(XbusBrokerBase):
          True if successful, False otherwise
         """
         code, msg = yield from self.backend.call.send_item(
-            event_id, index, data
+            envelope_id, event_id, index, data
         )
         if code == 0:
             return True
@@ -612,7 +612,9 @@ class XbusBrokerFront(XbusBrokerBase):
         :return:
          True if successful, False otherwise
         """
-        code, msg = yield from self.backend.call.end_event(event_id)
+        code, msg = yield from self.backend.call.end_event(
+            envelope_id, event_id
+        )
         if code == 0:
             return True
         else:
@@ -651,7 +653,8 @@ class XbusBrokerFront(XbusBrokerBase):
         yield from self.disable_backend_forward(envelope_id)
         yield from self.update_envelope_state_wait(envelope_id)
         res = yield from self.backend.call.cancel_envelope(envelope_id)
-        if res == 0:
+        print(res)
+        if res.get('success'):
             return True
         else:
             return False
