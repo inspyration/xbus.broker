@@ -150,9 +150,10 @@ The individual :ref:`worker <worker>` or :ref:`consumer <consumer>`. There is
 a separation between :ref:`service <service>` and role because you can
 connect many different roles to your bus that will provide the same service.
 
-In effect, once you have described you work graph using a tree of
+In effect, once you have described your work graph using a tree of
 :ref:`event nodes <event_node>`, each one attached to a distinct service,
-you'll be able to spawn as many real workers (programs that provide a service).
+you'll be able to spawn as many real workers (programs that provide a
+service) that will attach to one service.
 
 The bus will automatically distribute the work between all the roles that
 provide the same :ref:`service <service>`.
