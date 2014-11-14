@@ -13,6 +13,7 @@ Contents:
 .. toctree::
    :maxdepth: 2
 
+   gettingstarted.rst
    presentation.rst
    architecture.rst
    semantics.rst
