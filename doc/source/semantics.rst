@@ -136,7 +136,7 @@ Service
 
 An abstract representation of one or more :ref:`event nodes <event_node>` be
 it a :ref:`worker <worker>` or :ref:`consumer <consumer>`. The service is the
- link between an event node and one or more concrete workers.
+link between an event node and one or more concrete workers.
 
 Attached to the service we will find a role, which is the concrete distinct
 instance of a :ref:`worker <worker>` or :ref:`consumer <consumer>`.
