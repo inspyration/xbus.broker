@@ -42,6 +42,23 @@ data they will receive. The event type is that contract. IE: if I say to
 the bus that I emit `new_clients` the consumers may rely on the bus to make
 sure that the same kind of datastructure will be served to them each time.
 
+.. _envelope:
+
+Envelope
+--------
+
+Any :ref:`event <event>` sent into the bus must be enclosed into an envelope.
+This is important because the evelope is a transactional unit that permits to
+rollback operations at the envelope level if your consumers are transaction
+aware.
+
+This really depends on your application layout but you can easily imagine a
+simple network that handles `invoices` and a final :ref:`consumer <consumer>`
+that will write accounting lines into accounting books. If for `any` reason
+the envelope failed in the middle you would want that NO single line was
+written in your books. Putting all the `invoice lines` in a single envelope
+you ensure that everything in the same envelope will be part of the same
+transaction.
 
 .. _event_node:
 
@@ -117,18 +134,25 @@ answer to the :ref:`backend <backend>`.
 Service
 -------
 
-TBD
+An abstract representation of one or more :ref:`event nodes <event_node>` be
+it a :ref:`worker <worker>` or :ref:`consumer <consumer>`. The service is the
+ link between an event node and one or more concrete workers.
+
+Attached to the service we will find a role, which is the concrete distinct
+instance of a :ref:`worker <worker>` or :ref:`consumer <consumer>`.
 
 .. _role:
 
 Role
 ----
 
-TBD
+The individual :ref:`worker <worker>` or :ref:`consumer <consumer>`. There is
+a separation between :ref:`service <service>` and role because you can
+connect many different roles to your bus that will provide the same service.
 
-.. _envelope:
+In effect, once you have described you work graph using a tree of
+:ref:`event nodes <event_node>`, each one attached to a distinct service,
+you'll be able to spawn as many real workers (programs that provide a service).
 
-Envelope
---------
-
-TBD
+The bus will automatically distribute the work between all the roles that
+provide the same :ref:`service <service>`.
