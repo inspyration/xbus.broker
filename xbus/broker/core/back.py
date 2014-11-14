@@ -703,7 +703,7 @@ class XbusBrokerBack(XbusBrokerBase):
          the consumer node
 
          :param envelope_id:
-         the UUID of the envelope which contains the event
+          the UUID of the envelope which contains the event
 
         :param event_id:
          The UUID of the event
