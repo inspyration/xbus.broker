@@ -1,6 +1,8 @@
 # -*- encoding: utf-8 -*-
 import asyncio
 import aiozmq
+import multiprocessing
+import time
 from aiozmq import rpc
 
 
@@ -16,16 +18,19 @@ class XBusBackClient(rpc.AttrHandler):
         if loop is None:
             loop = aiozmq.ZmqEventLoopPolicy().new_event_loop()
         self.loop = loop
+        self.client = None
+        self.token = None
         super(rpc.AttrHandler, self).__init__()
 
     @asyncio.coroutine
     def start(self):
-        client = yield from rpc.connect_rpc(
+        self.client = yield from rpc.connect_rpc(
             connect=self.back_url, loop=self.loop
         )
-        ticket = yield from client.call.login(self.login, self.password)
-        res = yield from client.call.register_node(ticket, self.url)
-        client.close()
+        self.token = yield from self.client.call.login(
+            self.login, self.password
+        )
+        res = yield from self.client.call.register_node(self.token, self.url)
         server = yield from rpc.serve_rpc(self, bind=self.url, loop=self.loop)
         return server
 
@@ -34,7 +39,8 @@ class XBusBackClient(rpc.AttrHandler):
     def start_event(
         self, envelope_id: str, event_id: str, type_name: str
     ) -> bool:
-        return self.do_start_event(type_name)
+        res = self.do_start_event(type_name)
+        return res
 
     @rpc.method
     @asyncio.coroutine
@@ -67,6 +73,17 @@ class XBusBackClient(rpc.AttrHandler):
 
 
 class Worker(XBusBackClient):
+
+    @rpc.method
+    @asyncio.coroutine
+    def start_event(
+        self, envelope_id: str, event_id: str, type_name: str
+    ) -> bool:
+        ready = self.client.call.ready(self.token)
+        asyncio.async(ready, loop=self.loop)
+        return super(Worker, self).start_event(
+            envelope_id, event_id, type_name
+        )
 
     def do_start_event(self, event_type) -> bool:
         print('Worker: start event of type:', event_type)
@@ -124,25 +141,33 @@ def coro_worker(
 
 
 @asyncio.coroutine
-def coro_emitter(front_url: str, login: str, password: str, loop):
+def coro_emitter(
+        front_url: str, login: str, password: str, nb_envelopes: int,
+        nb_items: int, loop
+    ):
     print("Establishing RPC connection...")
     client = yield from rpc.connect_rpc(connect=front_url, loop=loop)
     print("RPC connection OK")
-
     token = yield from client.call.login(login, password)
     print("Got connection token:", token)
-    envelope_id = yield from client.call.start_envelope(token)
-    print("Started envelope:", envelope_id)
-    event_id = yield from client.call.start_event(
-        token, envelope_id, 'test_event', 0
-    )
-    print("Started event:", event_id)
-    yield from client.call.send_item(token, envelope_id, event_id, 0, b'data0')
-    print("Sent item: 'data_0'")
-    yield from client.call.end_event(token, envelope_id, event_id)
-    print("Ended event:", event_id)
-    yield from client.call.end_envelope(token, envelope_id)
-    print("Ended envelope:", envelope_id)
+
+    for _ in range(nb_envelopes):
+        envelope_id = yield from client.call.start_envelope(token)
+        print("Started envelope:", envelope_id)
+        event_id = yield from client.call.start_event(
+            token, envelope_id, 'test_event', 0
+        )
+        print("Started event:", event_id)
+        print("Sending {} items...".format(nb_items))
+        for i in range(nb_items):
+            yield from client.call.send_item(
+                token, envelope_id, event_id, b'data' + str(i).encode()
+            )
+        print("Sent {} items".format(nb_items))
+        yield from client.call.end_event(token, envelope_id, event_id)
+        print("Ended event:", event_id)
+        yield from client.call.end_envelope(token, envelope_id)
+        print("Ended envelope:", envelope_id)
 
     client.close()
 
@@ -158,17 +183,39 @@ def main():
     work_pwd = 'password'
     cons_log = 'consumer_role'
     cons_pwd = 'password'
+    multiprocess = False
 
     loop = aiozmq.ZmqEventLoopPolicy().new_event_loop()
-    emitter = coro_emitter(frnt_url, emit_log, emit_pwd, loop)
-    worker = coro_worker(work_url, back_url, work_log, work_pwd, loop)
-    consumer = coro_consumer(cons_url, back_url, cons_log, cons_pwd, loop)
+    if multiprocess:
+        emit_loop = loop
+        work_loop = aiozmq.ZmqEventLoopPolicy().new_event_loop()
+        cons_loop = aiozmq.ZmqEventLoopPolicy().new_event_loop()
+    else:
+        work_loop = cons_loop = emit_loop = loop
+    emitter = coro_emitter(frnt_url, emit_log, emit_pwd, 10, 1000, emit_loop)
+    worker = coro_worker(work_url, back_url, work_log, work_pwd, work_loop)
+    consumer = coro_consumer(cons_url, back_url, cons_log, cons_pwd, cons_loop)
 
-    loop.run_until_complete(asyncio.gather(worker, consumer, loop=loop))
-    loop.run_until_complete(emitter)
-    loop.run_forever()
-    worker.close()
-    consumer.close()
+    if multiprocess:
+        asyncio.async(emitter, loop=emit_loop)
+        asyncio.async(worker, loop=work_loop)
+        asyncio.async(consumer, loop=cons_loop)
+
+        work_run_proc = multiprocessing.Process(target=work_loop.run_forever)
+        cons_run_proc = multiprocessing.Process(target=cons_loop.run_forever)
+        time.sleep(1)
+        emit_run_proc = multiprocessing.Process(target=emit_loop.run_forever)
+
+        emit_run_proc.start()
+        work_run_proc.start()
+        cons_run_proc.start()
+
+    else:
+        loop.run_until_complete(asyncio.gather(worker, consumer, loop=loop))
+        loop.run_until_complete(emitter)
+        loop.run_forever()
+        worker.close()
+        consumer.close()
 
 
 if __name__ == "__main__":
