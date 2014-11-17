@@ -218,12 +218,14 @@ class XbusBrokerBack(XbusBrokerBase):
          the envelop id you just started
         """
         # TODO: replace new dict with a properly defined Envelope object?
-        self.envelopes[envelope_id] = {}
+        self.envelopes[envelope_id] = {
+            'trigger': asyncio.Future(loop=self.loop)
+        }
         return envelope_id
 
     @rpc.method
     @asyncio.coroutine
-    def end_envelope(self, envelope_id: str) -> str:
+    def end_envelope(self, envelope_id: str) -> dict:
         """
         :param envelope_id:
          the envelope id you want to mark as finished
@@ -232,25 +234,8 @@ class XbusBrokerBack(XbusBrokerBase):
          a dict containing information about the result like so
          {'success': True, 'message': "1200 lines inserted, import_id: 23455"}
         """
-        # TODO: we must call all the active consumers that are concerned by
-        # the envelope we are ending and make sure they are aware they can
-        # now commit their respective changes
 
-        envelope = self.envelopes[envelope_id]
-        all_nodes = {}
-        for event in envelope.values():
-            all_nodes.update(event.nodes)
-
-        for node in all_nodes.values():
-            if node['consumer']:
-                coro = self.consumer_end_envelope
-            else:
-                coro = self.worker_end_envelope
-            asyncio.async(
-                coro(node, envelope_id),
-                loop=self.loop
-            )
-
+        asyncio.async(self.async_end_envelope(envelope_id), loop=self.loop)
         return {
             'success': True,
             'envelope_id': envelope_id,
@@ -277,7 +262,7 @@ class XbusBrokerBack(XbusBrokerBase):
         for event in envelope:
             all_nodes.update(event.nodes)
 
-        for node in all_nodes:
+        for node in all_nodes.values():
             if node['consumer']:
                 coro = self.consumer_cancel_envelope
             else:
@@ -360,6 +345,8 @@ class XbusBrokerBack(XbusBrokerBase):
             node_id, service_id, is_start, child_ids = row.as_tuple()
             node = nodes[node_id]
             node['node_id'] = node_id
+            node['recv'] = 0
+            node['trigger'] = asyncio.Future(loop=self.loop)
             service_roles = self.active_roles[service_id]
             if is_start:
                 start.append(node)
@@ -369,6 +356,7 @@ class XbusBrokerBack(XbusBrokerBase):
                 role_id = service_roles.pop()
                 node['consumer'] = False
                 node['role_id'] = role_id
+                node['sent'] = 0
                 node['children'] = {cid: nodes[cid] for cid in child_ids}
             else:             # Consumers
                 node['consumer'] = True
@@ -417,7 +405,7 @@ class XbusBrokerBack(XbusBrokerBase):
             else:
                 coro = self.worker_end_event
             asyncio.async(
-                coro(node, envelope_id, event_id),
+                coro(node, envelope_id, event_id, nb_items),
                 loop=self.loop
             )
 
@@ -459,12 +447,48 @@ class XbusBrokerBack(XbusBrokerBase):
             else:
                 coro = self.worker_send_item
             asyncio.async(
-                coro(node, envelope_id, event_id, [index], data),
+                coro(node, envelope_id, event_id, [index], data, index),
                 loop=self.loop
             )
 
         res = (0, "{}".format(event_id))
         return res
+
+    @asyncio.coroutine
+    def async_end_envelope(self, envelope_id: str):
+
+        envelope = self.envelopes[envelope_id]
+        all_nodes = {}
+        for key, event in envelope.items():
+            if key == 'trigger':
+                continue
+            all_nodes.update(event.nodes)
+
+        worker_nodes = []
+        consumer_nodes = []
+        for node in all_nodes.values():
+            if node['consumer']:
+                consumer_nodes.append(node)
+            else:
+                worker_nodes.append(node)
+
+        while not all(node.get('done', False) for node in consumer_nodes):
+            trigger_res = yield from envelope['trigger']
+            if trigger_res is False:
+                # TODO: stop the envelope execution
+                return False
+
+        for node in consumer_nodes:
+            asyncio.async(
+                self.consumer_end_envelope(node, envelope_id),
+                loop=self.loop
+            )
+
+        for node in worker_nodes:
+            asyncio.async(
+                self.worker_end_envelope(node, envelope_id),
+                loop=self.loop
+            )
 
     @asyncio.coroutine
     def worker_start_event(
@@ -509,14 +533,18 @@ class XbusBrokerBack(XbusBrokerBase):
                     coro(child, envelope_id, event_id, type_id, type_name),
                     loop=self.loop
                 )
+
+            if node['trigger']._callbacks:
+                node['trigger'].set_result(True)
+                node['trigger'] = asyncio.Future(loop=self.loop)
         else:
             # TODO: stop the envelope execution
             return False
 
     @asyncio.coroutine
     def worker_send_item(
-        self, node: dict, envelope_id: str, event_id: str,
-        indices: list, data: bytes
+        self, node: dict, envelope_id: str, event_id: str, indices: list,
+        data: bytes, forward_index: int
     ) -> bool:
         """Forward the item to the workers.
 
@@ -538,6 +566,12 @@ class XbusBrokerBack(XbusBrokerBase):
         :return:
          True if successful, False otherwise
         """
+        while node['recv'] < forward_index:
+            trigger_res = yield from node['trigger']
+            if trigger_res is False:
+                # TODO: stop the envelope execution
+                return False
+
         worker_id = node['role_id']
         worker = self.node_registry[worker_id]
         envelope = self.envelopes[envelope_id]
@@ -546,17 +580,25 @@ class XbusBrokerBack(XbusBrokerBase):
             envelope_id, event_id, indices, data
         )
         if reply:
+            node['recv'] += 1
             children = node['children']
-            for child in children.values():
-                if child['consumer']:
-                    coro = self.consumer_send_item
-                else:
-                    coro = self.worker_send_item
-                for rindices, rdata in reply:
+            sent = node['sent']
+            for ri, rd in reply:
+                for child in children.values():
+                    if child['consumer']:
+                        coro = self.consumer_send_item
+                    else:
+                        coro = self.worker_send_item
                     asyncio.async(
-                        coro(child, envelope_id, event_id, rindices, rdata),
+                        coro(child, envelope_id, event_id, ri, rd, sent),
                         loop=self.loop
                     )
+                sent += 1
+            node['sent'] = sent
+
+            if node['trigger']._callbacks:
+                node['trigger'].set_result(True)
+                node['trigger'] = asyncio.Future(loop=self.loop)
             return True
         else:
             # TODO: stop the envelope execution
@@ -564,7 +606,7 @@ class XbusBrokerBack(XbusBrokerBase):
 
     @asyncio.coroutine
     def worker_end_event(
-            self, node: dict, envelope_id: str, event_id: str
+            self, node: dict, envelope_id: str, event_id: str, nb_items: int
     ) -> bool:
         """Forward the end of the event to the workers.
 
@@ -580,6 +622,12 @@ class XbusBrokerBack(XbusBrokerBase):
         :return:
          True if successful, False otherwise
         """
+        while node['recv'] < nb_items:
+            trigger_res = yield from node['trigger']
+            if trigger_res is False:
+                # TODO: stop the envelope execution
+                return False
+
         worker_id = node['role_id']
         worker = self.node_registry[worker_id]
         envelope = self.envelopes[envelope_id]
@@ -595,9 +643,10 @@ class XbusBrokerBack(XbusBrokerBase):
                 else:
                     coro = self.worker_end_event
                 asyncio.async(
-                    coro(child, envelope_id, event_id),
+                    coro(child, envelope_id, event_id, node['sent']),
                     loop=self.loop
                 )
+
         else:
             # TODO: stop the envelope execution
             return False
@@ -676,10 +725,10 @@ class XbusBrokerBack(XbusBrokerBase):
         """
         consumer_ids = node['role_ids']
         tasks = []
+        envelope = self.envelopes[envelope_id]
+        event = envelope[event_id]
         for consumer_id in consumer_ids:
             consumer = self.node_registry[consumer_id]
-            envelope = self.envelopes[envelope_id]
-            event = envelope[event_id]
             task = asyncio.async(
                 consumer.call.start_event(envelope_id, event_id, type_name),
                 loop=self.loop
@@ -689,6 +738,9 @@ class XbusBrokerBack(XbusBrokerBase):
         res = yield from asyncio.gather(*tasks, loop=self.loop)
 
         if all(res):
+            if node['trigger']._callbacks:
+                node['trigger'].set_result(True)
+                node['trigger'] = asyncio.Future(loop=self.loop)
             return True
         else:
             # TODO: stop the envelope execution
@@ -696,8 +748,8 @@ class XbusBrokerBack(XbusBrokerBase):
 
     @asyncio.coroutine
     def consumer_send_item(
-            self, node: dict, envelope_id: str, event_id: str,
-            indices: list, data: bytes
+            self, node: dict, envelope_id: str, event_id: str, indices: list,
+            data: bytes, forward_index: int
     ) -> bool:
         """Forward the item to the consumers.
 
@@ -719,12 +771,19 @@ class XbusBrokerBack(XbusBrokerBase):
         :return:
          True if successful, False otherwise
         """
+        while node['recv'] < forward_index:
+            old_recv = node['recv']
+            trigger_res = yield from node['trigger']
+            if trigger_res is False:
+                # TODO: stop the envelope execution
+                return False
+
         consumer_ids = node['role_ids']
         tasks = []
+        envelope = self.envelopes[envelope_id]
+        event = envelope[event_id]
         for consumer_id in consumer_ids:
             consumer = self.node_registry[consumer_id]
-            envelope = self.envelopes[envelope_id]
-            event = envelope[event_id]
             task = asyncio.async(
                 consumer.call.send_item(envelope_id, event_id, indices, data),
                 loop=self.loop
@@ -732,7 +791,11 @@ class XbusBrokerBack(XbusBrokerBase):
             tasks.append(task)
 
         res = yield from asyncio.gather(*tasks, loop=self.loop)
-        if res:
+        if res is not None:  # TODO: actual condition
+            node['recv'] += 1
+            if node['trigger']._callbacks:
+                node['trigger'].set_result(True)
+                node['trigger'] = asyncio.Future(loop=self.loop)
             return True
         else:
             # TODO: stop the envelope execution
@@ -740,7 +803,7 @@ class XbusBrokerBack(XbusBrokerBase):
 
     @asyncio.coroutine
     def consumer_end_event(
-            self, node: dict, envelope_id: str, event_id: str
+            self, node: dict, envelope_id: str, event_id: str, nb_items: int
     ) -> bool:
         """Forward the end of the event to the consumers.
 
@@ -756,12 +819,18 @@ class XbusBrokerBack(XbusBrokerBase):
         :return:
          True if successful, False otherwise
         """
+        while node['recv'] < nb_items:
+            trigger_res = yield from node['trigger']
+            if trigger_res is False:
+                # TODO: stop the envelope execution
+                return False
+
         consumer_ids = node['role_ids']
         tasks = []
+        envelope = self.envelopes[envelope_id]
+        event = envelope[event_id]
         for consumer_id in consumer_ids:
             consumer = self.node_registry[consumer_id]
-            envelope = self.envelopes[envelope_id]
-            event = envelope[event_id]
             task = asyncio.async(
                 consumer.call.end_event(envelope_id, event_id),
                 loop=self.loop
@@ -771,6 +840,10 @@ class XbusBrokerBack(XbusBrokerBase):
         res = yield from asyncio.gather(*tasks, loop=self.loop)
 
         if all(res):
+            node['done'] = True
+            if envelope['trigger']._callbacks:
+                envelope['trigger'].set_result(True)
+                envelope['trigger'] = asyncio.Future(loop=self.loop)
             return True
         else:
             # TODO: stop the envelope execution
