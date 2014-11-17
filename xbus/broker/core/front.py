@@ -44,6 +44,7 @@ class XbusBrokerFront(XbusBrokerBase):
         # at the beginning the backend is None. Then the Front2Back will set
         # a backend in place when one comes to register itself.
         self.backend = None
+        self.envelopes = {}
         super(XbusBrokerFront, self).__init__(dbengine, loop=loop)
 
     @rpc.method
@@ -113,13 +114,15 @@ class XbusBrokerFront(XbusBrokerBase):
             # lookup the emitters table and find a matching "login"
             emitter_info = json.loads(emitter_json)
             emitter_id = emitter_info['id']
-        except (ValueError, SyntaxError, KeyError):
+        except KeyError:
             return ""
 
         envelope_id = self.new_envelope()
-        info = {'emitter_id': emitter_id, 'events': [], 'forward': True}
-        info_json = json.dumps(info)
-        yield from self.save_key(envelope_id, info_json)
+        info = {
+            'emitter_id': emitter_id,
+            'events': {},
+        }
+        self.envelopes[envelope_id] = info
 
         yield from self.log_new_envelope(envelope_id, emitter_id)
 
@@ -167,17 +170,13 @@ class XbusBrokerFront(XbusBrokerBase):
         except (ValueError, SyntaxError, KeyError):
             return ""
 
-        envelope_json = yield from self.get_key_info(envelope_id)
-        if envelope_json is None:
-            return ""
-
         try:
-            envelope_info = json.loads(envelope_json)
+            envelope_info = self.envelopes[envelope_id]
             envelope_emitter_id = envelope_info['emitter_id']
             envelope_closed = envelope_info.get('closed', False)
             envelope_forward = envelope_info['forward']
 
-        except (ValueError, SyntaxError, KeyError):
+        except KeyError:
             return ""
 
         if emitter_id != envelope_emitter_id:
@@ -195,24 +194,17 @@ class XbusBrokerFront(XbusBrokerBase):
 
         event_id = self.new_event()
         info = {
-            'emitter_id': emitter_id,
             'envelope_id': envelope_id,
-            'type_id': type_id
+            'type_id': type_id,
         }
 
-        info_json = json.dumps(info)
-        yield from self.save_key(event_id, info_json)
-
-        envelope_info['events'].append(event_id)
-        envelope_json = json.dumps(envelope_info)
-        yield from self.save_key(envelope_id, envelope_json)
+        envelope_info['events'][event_id] = info
 
         yield from self.log_new_event(
             event_id, envelope_id, emitter_id, type_id, estimate
         )
 
         if envelope_forward:
-            pass
             asyncio.async(
                 self.backend_start_event(
                     envelope_id, event_id, type_id, event_name
@@ -241,9 +233,6 @@ class XbusBrokerFront(XbusBrokerBase):
         :param event_id:
          the UUID of the event
 
-        :param index:
-         the item index
-
         :param data:
          the item data
 
@@ -260,37 +249,30 @@ class XbusBrokerFront(XbusBrokerBase):
         except (ValueError, SyntaxError, KeyError):
             return False
 
-        event_json = yield from self.get_key_info(event_id)
-        if event_json is None:
-            return False
-
         try:
-            event_info = json.loads(event_json)
-            event_envelope_id = event_info['envelope_id']
-            event_emitter_id = event_info['emitter_id']
-            event_closed = event_info.get('closed', False)
-        except (ValueError, SyntaxError, KeyError):
-            return False
-
-        envelope_json = yield from self.get_key_info(envelope_id)
-        if envelope_json is None:
-            return False
-
-        try:
-            envelope_info = json.loads(envelope_json)
+            envelope_info = self.envelopes[envelope_id]
+            envelope_events = envelope_info['events']
+            envelope_emitter_id = envelope_info['emitter_id']
             envelope_forward = envelope_info['forward']
-        except (ValueError, SyntaxError, KeyError):
+        except KeyError:
             return False
 
-        if emitter_id != event_emitter_id or envelope_id != event_envelope_id:
+        if emitter_id != envelope_emitter_id:
             return False
+
+        try:
+            event_info = envelope_events[event_id]
+            index = event_info['recv']
+            event_closed = event_info.get('closed', False)
+        except KeyError:
+            return False
+
         if event_closed:
             return False
 
         yield from self.log_sent_item(event_id, index, data)
 
         if envelope_forward:
-            pass
             asyncio.async(
                 self.backend_send_item(envelope_id, event_id, index, data),
                 loop=self.loop
@@ -330,36 +312,26 @@ class XbusBrokerFront(XbusBrokerBase):
         except (ValueError, SyntaxError, KeyError):
             return False
 
-        event_json = yield from self.get_key_info(event_id)
-        if event_json is None:
-            return False
-
         try:
-            event_info = json.loads(event_json)
-            event_envelope_id = event_info['envelope_id']
-            event_emitter_id = event_info['emitter_id']
-            event_closed = event_info.get('closed', False)
-        except (ValueError, SyntaxError, KeyError):
-            return False
-
-        envelope_json = yield from self.get_key_info(envelope_id)
-        if envelope_json is None:
-            return False
-
-        try:
-            envelope_info = json.loads(envelope_json)
+            envelope_info = self.envelopes[envelope_id]
+            envelope_emitter_id = envelope_info['emitter_id']
+            envelope_events = envelope_info['events']
             envelope_forward = envelope_info['forward']
-        except (ValueError, SyntaxError, KeyError):
+        except KeyError:
             return False
 
-        if emitter_id != event_emitter_id or envelope_id != event_envelope_id:
+        if emitter_id != envelope_emitter_id:
             return False
+
+        try:
+            event_info = envelope_events[event_id]
+            event_closed = event_info.get('closed', False)
+        except KeyError:
+            return False
+
         if event_closed:
             return False
-
         event_info['closed'] = True
-        event_json = json.dumps(event_info)
-        yield from self.save_key(event_id, event_json)
 
         if envelope_forward:
             pass
@@ -401,17 +373,13 @@ class XbusBrokerFront(XbusBrokerBase):
         except (ValueError, SyntaxError, KeyError):
             return False
 
-        envelope_json = yield from self.get_key_info(envelope_id)
-        if envelope_json is None:
-            return False
-
         try:
-            envelope_info = json.loads(envelope_json)
+            envelope_info = self.envelopes[envelope_id]
             envelope_events = envelope_info['events']
             envelope_closed = envelope_info.get('closed', False)
             envelope_emitter_id = envelope_info['emitter_id']
             envelope_forward = envelope_info['forward']
-        except (ValueError, SyntaxError, KeyError):
+        except KeyError:
             return False
 
         if emitter_id != envelope_emitter_id:
@@ -419,23 +387,11 @@ class XbusBrokerFront(XbusBrokerBase):
         if envelope_closed:
             return False
 
-        for event_id in envelope_events:
-            event_json = yield from self.get_key_info(event_id)
-            if event_json is None:
-                return False
-            try:
-                event_info = json.loads(event_json)
-                if not event_info.get('closed', False):
-                    return False
-            except(ValueError, SyntaxError, KeyError):
+        for event_info in envelope_events.values():
+            if not event_info.get('closed', False):
                 return False
 
         envelope_info['closed'] = True
-        envelope_json = json.dumps(envelope_info)
-        yield from self.save_key(envelope_id, envelope_json)
-
-        # The front-end will have to log the new envelope state according to
-        # the back-end's replies ('wait' or 'exec').
 
         if envelope_forward:
             asyncio.async(
@@ -478,17 +434,13 @@ class XbusBrokerFront(XbusBrokerBase):
         except (ValueError, SyntaxError, KeyError):
             return False
 
-        envelope_json = yield from self.get_key_info(envelope_id)
-        if envelope_json is None:
-            return False
-
         try:
-            envelope_info = json.loads(envelope_json)
+            envelope_info = self.envelopes[envelope_id]
             envelope_events = envelope_info['events']
             envelope_closed = envelope_info.get('closed')
             envelope_emitter_id = envelope_info['emitter_id']
             envelope_forward = envelope_info['forward']
-        except (ValueError, SyntaxError, KeyError):
+        except KeyError:
             return False
 
         if emitter_id != envelope_emitter_id:
@@ -496,21 +448,9 @@ class XbusBrokerFront(XbusBrokerBase):
         if envelope_closed:
             return False
 
-        for event_id in envelope_events:
-            event_json = yield from self.get_key_info(event_id)
-            if event_json is None:
-                continue
-            try:
-                event_info = json.loads(event_json)
-                event_info['closed'] = True
-                event_json = json.dumps(event_info)
-                yield from self.save_key(event_id, event_json)
-            except(ValueError, SyntaxError, KeyError):
-                continue
-
         envelope_info['closed'] = True
-        envelope_json = json.dumps(envelope_info)
-        yield from self.save_key(envelope_id, envelope_json)
+        for event_info in envelope_events.values():
+            event_info['closed'] = True
 
         yield from self.update_envelope_state_cancel(envelope_id)
 
@@ -533,6 +473,7 @@ class XbusBrokerFront(XbusBrokerBase):
         :return:
          True if successful, False otherwise
         """
+        envelope_info = self.envelopes[envelope_id]
         res = yield from self.backend.call.start_envelope(envelope_id)
         if res:
             return True
@@ -634,11 +575,12 @@ class XbusBrokerFront(XbusBrokerBase):
         res = yield from self.backend.call.end_envelope(envelope_id)
         if res == 0:
             yield from self.update_envelope_state_exec(envelope_id)
-            return True
         else:
             yield from self.update_envelope_state_wait(envelope_id)
             yield from self.disable_backend_forward(envelope_id)
-            return False
+
+        del self.envelopes[envelope_id]
+        return bool(res == 0)
 
     @asyncio.coroutine
     def backend_cancel_envelope(self, envelope_id):
@@ -653,7 +595,7 @@ class XbusBrokerFront(XbusBrokerBase):
         yield from self.disable_backend_forward(envelope_id)
         yield from self.update_envelope_state_wait(envelope_id)
         res = yield from self.backend.call.cancel_envelope(envelope_id)
-        print(res)
+        del self.envelopes[envelope_id]
         if res.get('success'):
             return True
         else:
