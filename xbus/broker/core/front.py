@@ -556,7 +556,6 @@ class XbusBrokerFront(XbusBrokerBase):
         """
         event_info = self.envelopes[envelope_id]['events'][event_id]
         while event_info['sent'] < index:
-            old_sent = event_info['sent']
             trigger_res = yield from event_info['trigger']
             if trigger_res is False:
                 return False
