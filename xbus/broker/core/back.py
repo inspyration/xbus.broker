@@ -394,7 +394,9 @@ class XbusBrokerBack(XbusBrokerBase):
 
     @rpc.method
     @asyncio.coroutine
-    def end_event(self, envelope_id: str, event_id: str) -> tuple:
+    def end_event(
+            self, envelope_id: str, event_id: str, nb_items: int
+    ) -> tuple:
         """Finish an event normally.
 
         :param event_id:

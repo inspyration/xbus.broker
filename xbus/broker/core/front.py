@@ -121,6 +121,7 @@ class XbusBrokerFront(XbusBrokerBase):
         info = {
             'emitter_id': emitter_id,
             'events': {},
+            'trigger': asyncio.Future(loop=self.loop)
         }
         self.envelopes[envelope_id] = info
 
@@ -196,6 +197,9 @@ class XbusBrokerFront(XbusBrokerBase):
         info = {
             'envelope_id': envelope_id,
             'type_id': type_id,
+            'recv': 0,
+            'sent': 0,
+            'trigger': asyncio.Future(loop=self.loop)
         }
 
         envelope_info['events'][event_id] = info
@@ -217,7 +221,7 @@ class XbusBrokerFront(XbusBrokerBase):
     @rpc.method
     @asyncio.coroutine
     def send_item(self, token: str, envelope_id: str, event_id: str,
-                  index: int, data: bytes) -> bool:
+                  data: bytes) -> bool:
         """Send an item through XBUS.
 
         :param token:
@@ -271,6 +275,7 @@ class XbusBrokerFront(XbusBrokerBase):
             return False
 
         yield from self.log_sent_item(event_id, index, data)
+        event_info['recv'] = index + 1
 
         if envelope_forward:
             asyncio.async(
@@ -334,9 +339,9 @@ class XbusBrokerFront(XbusBrokerBase):
         event_info['closed'] = True
 
         if envelope_forward:
-            pass
+            nb_items = event_info['recv']
             asyncio.async(
-                self.backend_end_event(envelope_id, event_id),
+                self.backend_end_event(envelope_id, event_id, nb_items),
                 loop=self.loop
             )
 
@@ -476,9 +481,14 @@ class XbusBrokerFront(XbusBrokerBase):
         envelope_info = self.envelopes[envelope_id]
         res = yield from self.backend.call.start_envelope(envelope_id)
         if res:
+            envelope_info['forward'] = True
+            if envelope_info['trigger']._callbacks:
+                envelope_info['trigger'].set_result(True)
+                envelope_info['trigger'] = asyncio.Future(loop=self.loop)
             return True
         else:
-            yield from self.disable_backend_forward(envelope_id)
+            envelope_info['forward'] = False
+            envelope_info['trigger'].set_result(False)
             return False
 
     @asyncio.coroutine
@@ -501,10 +511,23 @@ class XbusBrokerFront(XbusBrokerBase):
         :return:
          True if successful, False otherwise
         """
+        envelope_info = self.envelopes[envelope_id]
+        event_info = envelope_info['events'][event_id]
+        forward = envelope_info.get('forward')
+        if forward is None:
+            forward = yield from envelope_info['trigger']
+
+        if forward is False:
+            event_info['trigger'].set_result(False)
+            return False
+
         code, msg = yield from self.backend.call.start_event(
             envelope_id, event_id, type_id, type_name
         )
         if code == 0:
+            if event_info['trigger']._callbacks:
+                event_info['trigger'].set_result(True)
+                event_info['trigger'] = asyncio.Future(loop=self.loop)
             return True
         else:
             yield from self.disable_backend_forward(envelope_id)
@@ -531,17 +554,31 @@ class XbusBrokerFront(XbusBrokerBase):
         :return:
          True if successful, False otherwise
         """
+        event_info = self.envelopes[envelope_id]['events'][event_id]
+        while event_info['sent'] < index:
+            old_sent = event_info['sent']
+            trigger_res = yield from event_info['trigger']
+            print(index, event_info['sent'], old_sent)
+            if trigger_res is False:
+                return False
+
         code, msg = yield from self.backend.call.send_item(
             envelope_id, event_id, index, data
         )
         if code == 0:
+            event_info['sent'] += 1
+            if event_info['trigger']._callbacks:
+                event_info['trigger'].set_result(True)
+                event_info['trigger'] = asyncio.Future(loop=self.loop)
             return True
         else:
             yield from self.disable_backend_forward(envelope_id)
             return False
 
     @asyncio.coroutine
-    def backend_end_event(self, envelope_id: str, event_id: str):
+    def backend_end_event(
+            self, envelope_id: str, event_id: str, nb_items: int
+    ):
         """Forward the end of the event to the backend.
 
         :param envelope_id:
@@ -550,13 +587,26 @@ class XbusBrokerFront(XbusBrokerBase):
         :param event_id:
          the UUID of the event
 
+        :param event_id:
+         the number of items sent for this event.
+
         :return:
          True if successful, False otherwise
         """
+        envelope_info = self.envelopes[envelope_id]
+        event_info = envelope_info['events'][event_id]
+        while event_info['sent'] < nb_items:
+            trigger_res = yield from event_info['trigger']
+            if trigger_res is False:
+                return False
+
         code, msg = yield from self.backend.call.end_event(
-            envelope_id, event_id
+            envelope_id, event_id, nb_items
         )
         if code == 0:
+            if envelope_info['trigger']._callbacks:
+                envelope_info['trigger'].set_result(True)
+                envelope_info['trigger'] = asyncio.Future(loop=self.loop)
             return True
         else:
             yield from self.disable_backend_forward(envelope_id)
@@ -572,6 +622,13 @@ class XbusBrokerFront(XbusBrokerBase):
         :return:
          True if successful, False otherwise
         """
+        envelope_info = self.envelopes[envelope_id]
+        events = envelope_info['events'].values()
+        while not all(evt.get('closed', False) for evt in events):
+            trigger_res = yield from envelope_info['trigger']
+            if trigger_res is False:
+                return False
+
         res = yield from self.backend.call.end_envelope(envelope_id)
         if res == 0:
             yield from self.update_envelope_state_exec(envelope_id)
@@ -612,11 +669,14 @@ class XbusBrokerFront(XbusBrokerBase):
         :return:
          True
         """
-        envelope_json = yield from self.get_key_info(envelope_id)
-        envelope_info = json.loads(envelope_json)
-        envelope_info['forward'] = False
-        envelope_json = json.dumps(envelope_info)
-        yield from self.save_key(envelope_id, envelope_json)
+        try:
+            envelope_info = self.envelopes[envelope_id]
+            envelope_info['forward'] = False
+            envelope_info['trigger'].set_result(False)
+            for event_info in envelope_info['events'].values():
+                event_info['trigger'].set_result(False)
+        except KeyError:
+            return False
         return True
 
     @asyncio.coroutine
@@ -686,7 +746,8 @@ class XbusBrokerFront(XbusBrokerBase):
          False otherwise
         """
         with (yield from self.dbengine) as conn:
-            query = select((func.count(),)).select_from(emitter_profile_event_type_rel)
+            query = select((func.count(),))
+            query = query.select_from(emitter_profile_event_type_rel)
             query = query.where(
                 and_(
                     emitter_profile_event_type_rel.c.profile_id == profile_id,
