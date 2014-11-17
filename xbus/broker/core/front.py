@@ -558,7 +558,6 @@ class XbusBrokerFront(XbusBrokerBase):
         while event_info['sent'] < index:
             old_sent = event_info['sent']
             trigger_res = yield from event_info['trigger']
-            print(index, event_info['sent'], old_sent)
             if trigger_res is False:
                 return False
 
