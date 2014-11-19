@@ -4,7 +4,8 @@ Getting started
 With docker
 -----------
 
-Xbus is packaged using docker to help deploy it. To be continued... # TODO
+Xbus is packaged using docker to help deploy it. The docker images will soon
+be ready on the docker hub.
 
 Using the source code
 ---------------------
