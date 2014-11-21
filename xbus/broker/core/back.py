@@ -9,6 +9,7 @@ from collections import defaultdict
 
 from sqlalchemy.sql import select
 
+from xbus.broker.model import envelope
 from xbus.broker.model import role
 from xbus.broker.model import validate_password
 from xbus.broker.model.helpers import get_event_tree
@@ -226,7 +227,8 @@ class XbusBrokerBack(XbusBrokerBase):
     @rpc.method
     @asyncio.coroutine
     def end_envelope(self, envelope_id: str) -> dict:
-        """
+        """End an envelope normally.
+
         :param envelope_id:
          the envelope id you want to mark as finished
 
@@ -478,17 +480,25 @@ class XbusBrokerBack(XbusBrokerBase):
                 # TODO: stop the envelope execution
                 return False
 
+        tasks = []
+
         for node in consumer_nodes:
-            asyncio.async(
+            task = asyncio.async(
                 self.consumer_end_envelope(node, envelope_id),
                 loop=self.loop
             )
+            tasks.append(task)
 
         for node in worker_nodes:
             asyncio.async(
                 self.worker_end_envelope(node, envelope_id),
                 loop=self.loop
             )
+
+        res = yield from asyncio.gather(tasks, loop=self.loop)
+        if all(res):
+            yield from self.update_envelope_state_done(envelope_id)
+
 
     @asyncio.coroutine
     def worker_start_event(
@@ -772,7 +782,6 @@ class XbusBrokerBack(XbusBrokerBase):
          True if successful, False otherwise
         """
         while node['recv'] < forward_index:
-            old_recv = node['recv']
             trigger_res = yield from node['trigger']
             if trigger_res is False:
                 # TODO: stop the envelope execution
@@ -881,7 +890,6 @@ class XbusBrokerBack(XbusBrokerBase):
             tasks.append(task)
 
         res = yield from asyncio.gather(*tasks, loop=self.loop)
-
         if all(res):
             return True
         else:
@@ -954,6 +962,20 @@ class XbusBrokerBack(XbusBrokerBase):
                 return row.as_tuple()
             else:
                 return None, None, None
+
+    @asyncio.coroutine
+    def update_envelope_state_done(self, envelope_id: str):
+        """Internal helper method used to log the successful execution of all
+        events in the envelope.
+
+        :param envelope_id:
+         the UUID of the envelope.
+        """
+        with (yield from self.dbengine) as conn:
+            update = envelope.update()
+            update = update.where(envelope.c.id == envelope_id)
+            update = update.values(state='done')
+            yield from conn.execute(update)
 
 
 @asyncio.coroutine

@@ -95,4 +95,3 @@ emitter = Table(
            nullable=False),
     Column('last_emit', DateTime),
 )
-
