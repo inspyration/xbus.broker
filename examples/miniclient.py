@@ -3,7 +3,21 @@ import asyncio
 import aiozmq
 import multiprocessing
 import time
+import traceback
 from aiozmq import rpc
+
+
+def debug(func):
+    """Add this decorator to print exceptions raised by RPC calls.
+    It must be placed after the asyncio.coroutine and rpc.method decorators.
+    """
+    def _debug(*a, **k):
+        try:
+            return func(*a, **k)
+        except Exception as e:
+            traceback.print_exc()
+            raise e
+    return _debug
 
 
 class XBusBackClient(rpc.AttrHandler):
@@ -183,7 +197,7 @@ def main():
     work_pwd = 'password'
     cons_log = 'consumer_role'
     cons_pwd = 'password'
-    multiprocess = False
+    multiprocess = True
 
     loop = aiozmq.ZmqEventLoopPolicy().new_event_loop()
     if multiprocess:
@@ -192,7 +206,7 @@ def main():
         cons_loop = aiozmq.ZmqEventLoopPolicy().new_event_loop()
     else:
         work_loop = cons_loop = emit_loop = loop
-    emitter = coro_emitter(frnt_url, emit_log, emit_pwd, 10, 1000, emit_loop)
+    emitter = coro_emitter(frnt_url, emit_log, emit_pwd, 5, 1000, emit_loop)
     worker = coro_worker(work_url, back_url, work_log, work_pwd, work_loop)
     consumer = coro_consumer(cons_url, back_url, cons_log, cons_pwd, cons_loop)
 
