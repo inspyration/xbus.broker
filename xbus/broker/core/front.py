@@ -628,7 +628,7 @@ class XbusBrokerFront(XbusBrokerBase):
                 return False
 
         res = yield from self.backend.call.end_envelope(envelope_id)
-        if res == 0:
+        if res['success'] == True:
             yield from self.update_envelope_state_exec(envelope_id)
         else:
             yield from self.update_envelope_state_wait(envelope_id)
