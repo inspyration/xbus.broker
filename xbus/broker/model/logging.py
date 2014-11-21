@@ -10,6 +10,7 @@ from sqlalchemy import Enum
 from sqlalchemy import DateTime
 from sqlalchemy import Integer
 from sqlalchemy import LargeBinary
+from sqlalchemy import Boolean
 from sqlalchemy import func
 
 from sqlalchemy.types import Text
@@ -67,4 +68,12 @@ item = Table(
     Column('event_id', UUID, nullable=False, primary_key=True),
     Column('index', Integer, nullable=False, primary_key=True),
     Column('data', LargeBinary),
+)
+
+event_consumer_failure_rel = Table(
+    'event_consumer_inactive_rel', metadata,
+    Column('event_id', UUID, ForeignKey('event.id', ondelete='CASCADE')),
+    Column('node_id', UUID, ForeignKey('event_node.id', ondelete='CASCADE')),
+    Column('role_id', UUID, ForeignKey('role.id', ondelete='CASCADE')),
+    Column('was_unavailable', Boolean)
 )
