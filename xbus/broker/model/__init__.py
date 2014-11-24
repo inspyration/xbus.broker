@@ -18,8 +18,10 @@ from xbus.broker.model.service import service
 from xbus.broker.model.event import event_type
 from xbus.broker.model.event import event_node
 from xbus.broker.model.event import event_node_rel
+from xbus.broker.model.emission import emission_profile
 from xbus.broker.model.emission import emitter_profile
 from xbus.broker.model.emission import emitter_profile_event_type_rel
+from xbus.broker.model.input import input_descriptor
 from xbus.broker.model.logging import envelope
 from xbus.broker.model.logging import event
 from xbus.broker.model.logging import event_error
