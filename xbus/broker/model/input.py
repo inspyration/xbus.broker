@@ -28,7 +28,7 @@ input_descriptor = Table(
     Column(
         'name', Unicode(length=64), index=True, nullable=False, unique=True,
     ),
-    Column('descriptor', Binary),
+    Column('descriptor', Binary, nullable=False),
 )
 
 
