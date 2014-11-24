@@ -38,9 +38,10 @@ Each and every event in xbus needs only on thing: an event type. This is only
 a name, but this means a lot: Xbus does not try by itself to assert
 anything about the datastructure it transports and forwards. But at the same
 time it is necessary for the consumers (receivers) to know what kind of
-data they will receive. The event type is that contract. IE: if I say to
-the bus that I emit `new_clients` the consumers may rely on the bus to make
-sure that the same kind of datastructure will be served to them each time.
+data they will receive and how to treat it.
+The event type is that contract.  IE: if I say to the bus that I emit
+`new_clients` the consumers may rely on the bus to make sure that the same
+kind of datastructure will be served to them each time.
 
 .. _envelope:
 
@@ -78,8 +79,8 @@ Emitter
 An emitter is an independant program in your IT infrastructure that needs to
 send information about a change, a new item or whatever. In the internal Xbus
 database each emitter is assigned an emitter row that contains its login /
-password pair. An emitter is just that, it does not directly declares what is
-wants to listen to.
+password pair. An emitter is just that, it does not directly declare what it
+wants to emit.
 
 This is declared by the Xbus administrator using :ref:`emitter profiles
 <emitter_profile>`
@@ -112,7 +113,7 @@ data, transform or enrich it and then return it back to the broker.
 
 The contract between a worker and the :ref:`xbus backend <backend>` is that
 the bus will send all items of an event down to a worker and that the worker
-must send back some item (modified or not)
+must send back a list of items.
 
 
 .. _consumer:
@@ -120,7 +121,7 @@ must send back some item (modified or not)
 Consumer
 --------
 
-A consumer on the contrary of a :ref:`worker node <worker>` is still an
+A consumer as a :ref:`worker node <worker>` is still an
 independant program that connects to the :ref:`xbus backend <backend>`,
 but it is considered as a final node that will not return data for each item
 received.
