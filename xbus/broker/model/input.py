@@ -5,8 +5,8 @@
 
 from uuid import uuid4
 
-from sqlalchemy import Binary
 from sqlalchemy import Column
+from sqlalchemy import LargeBinary
 from sqlalchemy import Table
 from sqlalchemy import Unicode
 
@@ -28,7 +28,8 @@ input_descriptor = Table(
     Column(
         'name', Unicode(length=64), index=True, nullable=False, unique=True,
     ),
-    Column('descriptor', Binary, nullable=False),
+    Column('descriptor', LargeBinary, nullable=False),
+    Column('descriptor_mimetype', Unicode(length=64)),
 )
 
 
