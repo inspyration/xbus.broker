@@ -26,6 +26,10 @@ emission_profile = Table(
         'name', Unicode(length=64), index=True, nullable=False, unique=True,
     ),
     Column(
+        'owner_id', UUID,
+        ForeignKey('user.user_id', ondelete='RESTRICT'),
+    ),
+    Column(
         'input_type', Enum(*INPUT_TYPES.keys(), name='input_type'),
         nullable=False,
     ),
