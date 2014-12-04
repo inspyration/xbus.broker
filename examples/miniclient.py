@@ -162,7 +162,14 @@ def coro_emitter(
     print("Establishing RPC connection...")
     client = yield from rpc.connect_rpc(connect=front_url, loop=loop)
     print("RPC connection OK")
+
     token = yield from client.call.login(login, password)
+    if not token:
+        # The Xbus front-end returns an empty token when validation fails.
+        # TODO Raise an exception?
+        print("Validation failed; check the login and password.")
+        client.close()
+        return
     print("Got connection token:", token)
 
     for _ in range(nb_envelopes):
