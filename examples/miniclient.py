@@ -156,9 +156,9 @@ def coro_worker(
 
 @asyncio.coroutine
 def coro_emitter(
-        front_url: str, login: str, password: str, nb_envelopes: int,
-        nb_items: int, loop
-    ):
+    front_url: str, login: str, password: str, nb_envelopes: int,
+    nb_items: int, loop
+):
     print("Establishing RPC connection...")
     client = yield from rpc.connect_rpc(connect=front_url, loop=loop)
     print("RPC connection OK")
