@@ -39,9 +39,13 @@ class XbusBrokerBase(rpc.AttrHandler):
 
     @asyncio.coroutine
     def save_key(self, key: str, info: str) -> bool:
+        """Save a key with some data into Redis.
+        """
+
         try:
             # unicode objects must be encoded before hashing so we encode to
             # utf-8
+            # TODO ?? Where does this encoding happen?
             with (yield from self.redis_pool) as conn:
                 yield from conn.set(key, info)
         except (aioredis.ReplyError, aioredis.ProtocolError):
@@ -50,10 +54,15 @@ class XbusBrokerBase(rpc.AttrHandler):
 
     @asyncio.coroutine
     def get_key_info(self, key: str) -> str:
+        """Retrieve data about a key from Redis, or None if unavailable.
+        """
+
         try:
             with (yield from self.redis_pool) as conn:
                 info = yield from conn.get(key)
         except (aioredis.ReplyError, aioredis.ProtocolError):
+            return None
+        if info is None:
             return None
         return info.decode("utf-8")
 

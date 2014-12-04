@@ -61,7 +61,9 @@ class XbusBrokerFront(XbusBrokerBase):
          the password that must match your login
 
         :return:
-         a byte token that can be used during the session
+        Byte token that can be used during the session, or an empty string if
+        the token could not be verified (it is the responsibility of the caller
+        to ensure the token is correct).
         """
 
         emitter_row = yield from self.find_emitter_by_login(login)
