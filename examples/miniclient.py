@@ -183,6 +183,9 @@ def coro_emitter(
         yield from client.call.end_envelope(token, envelope_id)
         print("Ended envelope:", envelope_id)
 
+    yield from client.call.logout(token)
+    print("Logged out; terminating.")
+
     client.close()
 
 
