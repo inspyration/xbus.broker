@@ -347,7 +347,7 @@ class XbusBrokerBack(XbusBrokerBase):
             node_id, service_id, is_start, child_ids = row.as_tuple()
             node = nodes[node_id]
             node['node_id'] = node_id
-            node['recv'] = 0
+            node['recv'] = -1
             node['trigger'] = asyncio.Future(loop=self.loop)
             service_roles = self.active_roles[service_id]
             if is_start:
@@ -358,7 +358,7 @@ class XbusBrokerBack(XbusBrokerBase):
                 role_id = service_roles.pop()
                 node['consumer'] = False
                 node['role_id'] = role_id
-                node['sent'] = 0
+                node['sent'] = -1
                 node['children'] = {cid: nodes[cid] for cid in child_ids}
             else:             # Consumers
                 node['consumer'] = True
@@ -378,7 +378,6 @@ class XbusBrokerBack(XbusBrokerBase):
                 coro(node, envelope_id, event_id, type_id, type_name),
                 loop=self.loop
             )
-
         res = (0, "{}".format(event_id))
         return res
 
@@ -545,6 +544,7 @@ class XbusBrokerBack(XbusBrokerBase):
                 )
 
             if node['trigger']._callbacks:
+                node['recv'] = 0
                 node['trigger'].set_result(True)
                 node['trigger'] = asyncio.Future(loop=self.loop)
         else:
@@ -748,6 +748,7 @@ class XbusBrokerBack(XbusBrokerBase):
         res = yield from asyncio.gather(*tasks, loop=self.loop)
 
         if all(res):
+            node['recv'] = 0
             if node['trigger']._callbacks:
                 node['trigger'].set_result(True)
                 node['trigger'] = asyncio.Future(loop=self.loop)
@@ -800,7 +801,8 @@ class XbusBrokerBack(XbusBrokerBase):
             tasks.append(task)
 
         res = yield from asyncio.gather(*tasks, loop=self.loop)
-        if res is not None:  # TODO: actual condition
+
+        if all(res):  # TODO: actual condition
             node['recv'] += 1
             if node['trigger']._callbacks:
                 node['trigger'].set_result(True)
