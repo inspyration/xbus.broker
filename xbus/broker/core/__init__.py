@@ -3,8 +3,7 @@ __author__ = 'faide'
 
 import asyncio
 import aiozmq
-from xbus.broker.core.event import Event
-from xbus.broker.core.base import XbusBrokerBase
+
 from xbus.broker.core.front import get_frontserver
 from xbus.broker.core.back import get_backserver
 

@@ -18,7 +18,7 @@ from xbus.broker.model import event_type
 from xbus.broker.model import emitter_profile_event_type_rel
 from xbus.broker.model import item
 
-from xbus.broker.core import XbusBrokerBase
+from xbus.broker.core.base import XbusBrokerBase
 
 
 class XbusBrokerFront(XbusBrokerBase):

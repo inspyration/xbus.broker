@@ -15,8 +15,8 @@ from xbus.broker.model import validate_password
 from xbus.broker.model.helpers import get_event_tree
 from xbus.broker.model.helpers import get_consumer_roles
 
-from xbus.broker.core import XbusBrokerBase
-from xbus.broker.core import Event
+from xbus.broker.core.base import XbusBrokerBase
+from xbus.broker.core.back.event import Event
 
 
 class BrokerBackError(Exception):
@@ -498,7 +498,6 @@ class XbusBrokerBack(XbusBrokerBase):
         if all(res):
             yield from self.update_envelope_state_done(envelope_id)
 
-
     @asyncio.coroutine
     def worker_start_event(
             self, node: dict, envelope_id: str, event_id: str,
@@ -673,11 +672,6 @@ class XbusBrokerBack(XbusBrokerBase):
         :param envelope_id:
          the UUID of the envelope
 
-        :param event_id:
-         the UUID of the event to which belongs the target worker. When an
-         envelope is ended, this coroutine will be initially called on each
-         starting node of each event of the envelope.
-
         :return:
          True if successful, False otherwise
         """
@@ -705,7 +699,7 @@ class XbusBrokerBack(XbusBrokerBase):
          True if successful, False otherwise
         """
 
-        # TODO: stop the event execution
+        # TODO: stop the envelope execution
         pass
 
     @asyncio.coroutine
@@ -872,11 +866,6 @@ class XbusBrokerBack(XbusBrokerBase):
         :param envelope_id:
          the UUID of the envelope
 
-        :param event_id:
-         the UUID of the event to which belongs the target consumer. When an
-         envelope is ended, this coroutine will be initially called on each
-         starting node of each event of the envelope.
-
         :return:
          True if successful, False otherwise
         """
@@ -912,7 +901,7 @@ class XbusBrokerBack(XbusBrokerBase):
          True if successful, False otherwise
         """
 
-        # TODO: stop the event execution
+        # TODO: stop the envelope execution
         pass
 
     @asyncio.coroutine
