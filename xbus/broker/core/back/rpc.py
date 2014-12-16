@@ -17,6 +17,7 @@ from xbus.broker.model.helpers import get_consumer_roles
 
 from xbus.broker.core.base import XbusBrokerBase
 from xbus.broker.core.back.event import Event
+from xbus.broker.core.back.envelope import Envelope
 
 
 class BrokerBackError(Exception):
@@ -219,61 +220,9 @@ class XbusBrokerBack(XbusBrokerBase):
          the envelop id you just started
         """
         # TODO: replace new dict with a properly defined Envelope object?
-        self.envelopes[envelope_id] = {
-            'trigger': asyncio.Future(loop=self.loop)
-        }
-        return envelope_id
-
-    @rpc.method
-    @asyncio.coroutine
-    def end_envelope(self, envelope_id: str) -> dict:
-        """End an envelope normally.
-
-        :param envelope_id:
-         the envelope id you want to mark as finished
-
-        :return:
-         a dict containing information about the result like so
-         {'success': True, 'message': "1200 lines inserted, import_id: 23455"}
-        """
-
-        asyncio.async(self.async_end_envelope(envelope_id), loop=self.loop)
-        return {
-            'success': True,
-            'envelope_id': envelope_id,
-            'message': 'OK'
-        }
-
-    @rpc.method
-    @asyncio.coroutine
-    def cancel_envelope(self, envelope_id: str) -> str:
-        """This is used to cancel a previously started envelop and make sure
-        the consumers will rollback their changes
-
-        :param envelope_id:
-         the UUID of the envelope you want to cancel
-
-        :return:
-         the UUID of the envelope that has just been cancelled
-        """
-        # TODO: call all the active consumers that are concerned so they can
-        # rollback their current work on the envelope
-
-        envelope = self.envelopes[envelope_id]
-        all_nodes = {}
-        for event in envelope:
-            all_nodes.update(event.nodes)
-
-        for node in all_nodes.values():
-            if node['consumer']:
-                coro = self.consumer_cancel_envelope
-            else:
-                coro = self.worker_cancel_envelope
-            asyncio.async(
-                coro(node, envelope_id),
-                loop=self.loop
-            )
-
+        self.envelopes[envelope_id] = Envelope(
+            envelope_id, self.dbengine, self.loop
+        )
         return envelope_id
 
     @rpc.method
@@ -339,35 +288,28 @@ class XbusBrokerBack(XbusBrokerBase):
         event = Event(event_id, type_name, type_id)
         envelope[event_id] = event
 
-        # TODO: generate the event tree and add it to the event data
         rows = yield from self.get_event_tree(type_id)
-        nodes = defaultdict(dict)
+        nodes = {}
         start = []
         for row in rows:
             node_id, service_id, is_start, child_ids = row.as_tuple()
-            node = nodes[node_id]
-            node['node_id'] = node_id
-            node['recv'] = -1
-            node['trigger'] = asyncio.Future(loop=self.loop)
             service_roles = self.active_roles[service_id]
             if is_start:
-                start.append(node)
+                start.append(node_id)
             if child_ids:     # Workers
                 if not service_roles:
                     return False
                 role_id = service_roles.pop()
-                node['consumer'] = False
-                node['role_id'] = role_id
-                node['sent'] = -1
-                node['children'] = {cid: nodes[cid] for cid in child_ids}
+                client = self.node_registry[role_id]
+                event.add_worker_node(node_id, role_id, client, child_ids)
             else:             # Consumers
-                node['consumer'] = True
-                node['role_ids'] = tuple(service_roles)
+                clients = {r: self.node_registry[r] for r in service_roles}
+                event.new_consumer_node(node_id, clients)
                 consumers = self.consumers[service_id]
                 inactive_consumers = consumers - service_roles
                 # TODO do something with these...
 
-        event.set_graph(nodes, start)
+        event.set_graph(start)
 
         for node in start:
             if node['consumer']:
@@ -378,6 +320,53 @@ class XbusBrokerBack(XbusBrokerBase):
                 coro(node, envelope_id, event_id, type_id, type_name),
                 loop=self.loop
             )
+        res = (0, "{}".format(event_id))
+        return res
+
+    @rpc.method
+    @asyncio.coroutine
+    def send_item(
+            self, envelope_id: str, event_id: str, index: int, data: bytes
+    ) -> tuple:
+        """Send an item to the XBUS network.
+
+        :param event_id:
+         event UUID previously opened onto which this item will be sent
+
+        :param index:
+         the item index number.
+
+        :param data:
+         the raw data of the item. This data will not be opened or
+         interpreted by the bus itself, but forwarded to all the workers and
+         ultimately the consumers of the graph.
+
+        :return:
+         to be defined
+        """
+        # if we have an event_id this means we already have a precomputed graph
+        # for this event... so lets send the item to the corresponding nodes
+
+        envelope = self.envelopes.get(envelope_id)
+        if not envelope:
+            res = (1, 'No such envelope')
+            return res
+
+        event = envelope.get(event_id)
+        if not event:
+            res = (1, 'No such event')
+            return res
+
+        for node in event.start:
+            if node['consumer']:
+                coro = self.consumer_send_item
+            else:
+                coro = self.worker_send_item
+            asyncio.async(
+                coro(node, envelope_id, event_id, [index], data, index),
+                loop=self.loop
+            )
+
         res = (0, "{}".format(event_id))
         return res
 
@@ -415,494 +404,60 @@ class XbusBrokerBack(XbusBrokerBase):
 
     @rpc.method
     @asyncio.coroutine
-    def send_item(
-            self, envelope_id: str, event_id: str, index: int, data: bytes
-    ) -> tuple:
-        """Send an item to the XBUS network.
+    def end_envelope(self, envelope_id: str) -> dict:
+        """End an envelope normally.
 
-        :param event_id:
-         event UUID previously opened onto which this item will be sent
-
-        :param index:
-         the item index number.
-
-        :param data:
-         the raw data of the item. This data will not be opened or
-         interpreted by the bus itself, but forwarded to all the workers and
-         ultimately the consumers of the graph.
+        :param envelope_id:
+         the envelope id you want to mark as finished
 
         :return:
-         to be defined
+         a dict containing information about the result like so
+         {'success': True, 'message': "1200 lines inserted, import_id: 23455"}
         """
-        # if we have an event_id this means we already have a precomputed graph
-        # for this event... so lets send the item to the corresponding nodes
 
-        event = self.envelopes[envelope_id][event_id]
-        if not event:
-            res = (1, 'No such event')
+        envelope = self.envelopes.get(envelope_id)
+        if not envelope:
+            res = (1, 'No such envelope')
             return res
 
-        for node in event.start:
-            if node['consumer']:
-                coro = self.consumer_send_item
-            else:
-                coro = self.worker_send_item
-            asyncio.async(
-                coro(node, envelope_id, event_id, [index], data, index),
-                loop=self.loop
-            )
+        asyncio.async(envelope.end_envelope(), loop=self.loop)
+        return {
+            'success': True,
+            'envelope_id': envelope_id,
+            'message': 'OK'
+        }
 
-        res = (0, "{}".format(event_id))
-        return res
-
+    @rpc.method
     @asyncio.coroutine
-    def async_end_envelope(self, envelope_id: str):
+    def cancel_envelope(self, envelope_id: str) -> str:
+        """This is used to cancel a previously started envelop and make sure
+        the consumers will rollback their changes
+
+        :param envelope_id:
+         the UUID of the envelope you want to cancel
+
+        :return:
+         the UUID of the envelope that has just been cancelled
+        """
+        # TODO: call all the active consumers that are concerned so they can
+        # rollback their current work on the envelope
 
         envelope = self.envelopes[envelope_id]
         all_nodes = {}
-        for key, event in envelope.items():
-            if key == 'trigger':
-                continue
+        for event in envelope:
             all_nodes.update(event.nodes)
 
-        worker_nodes = []
-        consumer_nodes = []
         for node in all_nodes.values():
             if node['consumer']:
-                consumer_nodes.append(node)
+                coro = self.consumer_cancel_envelope
             else:
-                worker_nodes.append(node)
-
-        while not all(node.get('done', False) for node in consumer_nodes):
-            trigger_res = yield from envelope['trigger']
-            if trigger_res is False:
-                # TODO: stop the envelope execution
-                return False
-
-        tasks = []
-
-        for node in consumer_nodes:
-            task = asyncio.async(
-                self.consumer_end_envelope(node, envelope_id),
-                loop=self.loop
-            )
-            tasks.append(task)
-
-        for node in worker_nodes:
+                coro = self.worker_cancel_envelope
             asyncio.async(
-                self.worker_end_envelope(node, envelope_id),
+                coro(node, envelope_id),
                 loop=self.loop
             )
 
-        res = yield from asyncio.gather(tasks, loop=self.loop)
-        if all(res):
-            yield from self.update_envelope_state_done(envelope_id)
-
-    @asyncio.coroutine
-    def worker_start_event(
-            self, node: dict, envelope_id: str, event_id: str,
-            type_id: str, type_name: str
-    ) -> bool:
-        """Forward the new event to the workers.
-
-        :param node:
-         the worker node
-
-        :param envelope_id:
-         the UUID of the envelope which contains the event
-
-        :param event_id:
-         the generated UUID of the event
-
-        :param type_id:
-         the internal UUID that corresponds to the type of the event
-
-        :param type_name:
-         the name of the type of the started event
-
-        :return:
-         True if successful, False otherwise
-        """
-        worker_id = node['role_id']
-        worker = self.node_registry[worker_id]
-        envelope = self.envelopes[envelope_id]
-        event = envelope[event_id]
-        res = yield from worker.call.start_event(
-            envelope_id, event_id, type_name
-        )
-        if res:
-            children = node['children']
-            for child in children.values():
-                if child['consumer']:
-                    coro = self.consumer_start_event
-                else:
-                    coro = self.worker_start_event
-                asyncio.async(
-                    coro(child, envelope_id, event_id, type_id, type_name),
-                    loop=self.loop
-                )
-
-            if node['trigger']._callbacks:
-                node['recv'] = 0
-                node['trigger'].set_result(True)
-                node['trigger'] = asyncio.Future(loop=self.loop)
-        else:
-            # TODO: stop the envelope execution
-            return False
-
-    @asyncio.coroutine
-    def worker_send_item(
-        self, node: dict, envelope_id: str, event_id: str, indices: list,
-        data: bytes, forward_index: int
-    ) -> bool:
-        """Forward the item to the workers.
-
-        :param node:
-         the worker node
-
-        :param envelope_id:
-         the UUID of the envelope which contains the event
-
-        :param event_id:
-         The UUID of the event
-
-        :param indices:
-         the item indices
-
-        :param data:
-         the item data
-
-        :return:
-         True if successful, False otherwise
-        """
-        while node['recv'] < forward_index:
-            trigger_res = yield from node['trigger']
-            if trigger_res is False:
-                # TODO: stop the envelope execution
-                return False
-
-        worker_id = node['role_id']
-        worker = self.node_registry[worker_id]
-        envelope = self.envelopes[envelope_id]
-        event = envelope[event_id]
-        reply = yield from worker.call.send_item(
-            envelope_id, event_id, indices, data
-        )
-        if reply:
-            node['recv'] += 1
-            children = node['children']
-            sent = node['sent']
-            for ri, rd in reply:
-                for child in children.values():
-                    if child['consumer']:
-                        coro = self.consumer_send_item
-                    else:
-                        coro = self.worker_send_item
-                    asyncio.async(
-                        coro(child, envelope_id, event_id, ri, rd, sent),
-                        loop=self.loop
-                    )
-                sent += 1
-            node['sent'] = sent
-
-            if node['trigger']._callbacks:
-                node['trigger'].set_result(True)
-                node['trigger'] = asyncio.Future(loop=self.loop)
-            return True
-        else:
-            # TODO: stop the envelope execution
-            return False
-
-    @asyncio.coroutine
-    def worker_end_event(
-            self, node: dict, envelope_id: str, event_id: str, nb_items: int
-    ) -> bool:
-        """Forward the end of the event to the workers.
-
-        :param node:
-         the worker node
-
-        :param envelope_id:
-         the UUID of the envelope which contains the event
-
-        :param event_id:
-         the UUID of the event
-
-        :return:
-         True if successful, False otherwise
-        """
-        while node['recv'] < nb_items:
-            trigger_res = yield from node['trigger']
-            if trigger_res is False:
-                # TODO: stop the envelope execution
-                return False
-
-        worker_id = node['role_id']
-        worker = self.node_registry[worker_id]
-        envelope = self.envelopes[envelope_id]
-        event = envelope[event_id]
-        reply = yield from worker.call.end_event(
-            envelope_id, event_id
-        )
-        if reply:
-            children = node['children']
-            for child in children.values():
-                if child['consumer']:
-                    coro = self.consumer_end_event
-                else:
-                    coro = self.worker_end_event
-                asyncio.async(
-                    coro(child, envelope_id, event_id, node['sent']),
-                    loop=self.loop
-                )
-
-        else:
-            # TODO: stop the envelope execution
-            return False
-
-    @asyncio.coroutine
-    def worker_end_envelope(
-        self, node: dict, envelope_id: str
-    ) -> bool:
-        """Forward the end of the envelope to the backend.
-
-        :param node:
-         the worker node
-
-        :param envelope_id:
-         the UUID of the envelope
-
-        :return:
-         True if successful, False otherwise
-        """
-        worker_id = node['role_id']
-        worker = self.node_registry[worker_id]
-        envelope = self.envelopes[envelope_id]
-        reply = yield from worker.call.end_envelope(envelope_id)
-        if reply:
-            return True
-        else:
-            # TODO: stop the envelope execution
-            return False
-
-    @asyncio.coroutine
-    def worker_cancel_envelope(self, node: dict, envelope_id: str):
-        """Forward the cancellation of the envelope to the workers.
-
-        :param node:
-         the worker node
-
-        :param envelope_id:
-         the UUID of the envelope
-
-        :return:
-         True if successful, False otherwise
-        """
-
-        # TODO: stop the envelope execution
-        pass
-
-    @asyncio.coroutine
-    def consumer_start_event(
-            self, node: dict, envelope_id: str, event_id: str,
-            type_id: str, type_name: str
-    ) -> bool:
-        """Forward the new event to the consumers.
-
-        :param node:
-         the consumer node
-
-        :param envelope_id:
-         the UUID of the envelope which contains the event
-
-        :param event_id:
-         the generated UUID of the event
-
-        :param type_id:
-         the internal UUID that corresponds to the type of the event
-
-        :param type_name:
-         the name of the type of the started event
-
-        :return:
-         True if successful, False otherwise
-        """
-        consumer_ids = node['role_ids']
-        tasks = []
-        envelope = self.envelopes[envelope_id]
-        event = envelope[event_id]
-        for consumer_id in consumer_ids:
-            consumer = self.node_registry[consumer_id]
-            task = asyncio.async(
-                consumer.call.start_event(envelope_id, event_id, type_name),
-                loop=self.loop
-            )
-            tasks.append(task)
-
-        res = yield from asyncio.gather(*tasks, loop=self.loop)
-
-        if all(res):
-            node['recv'] = 0
-            if node['trigger']._callbacks:
-                node['trigger'].set_result(True)
-                node['trigger'] = asyncio.Future(loop=self.loop)
-            return True
-        else:
-            # TODO: stop the envelope execution
-            return False
-
-    @asyncio.coroutine
-    def consumer_send_item(
-            self, node: dict, envelope_id: str, event_id: str, indices: list,
-            data: bytes, forward_index: int
-    ) -> bool:
-        """Forward the item to the consumers.
-
-        :param node:
-         the consumer node
-
-         :param envelope_id:
-          the UUID of the envelope which contains the event
-
-        :param event_id:
-         The UUID of the event
-
-        :param indices:
-         the item indices
-
-        :param data:
-         the item data
-
-        :return:
-         True if successful, False otherwise
-        """
-        while node['recv'] < forward_index:
-            trigger_res = yield from node['trigger']
-            if trigger_res is False:
-                # TODO: stop the envelope execution
-                return False
-
-        consumer_ids = node['role_ids']
-        tasks = []
-        envelope = self.envelopes[envelope_id]
-        event = envelope[event_id]
-        for consumer_id in consumer_ids:
-            consumer = self.node_registry[consumer_id]
-            task = asyncio.async(
-                consumer.call.send_item(envelope_id, event_id, indices, data),
-                loop=self.loop
-            )
-            tasks.append(task)
-
-        res = yield from asyncio.gather(*tasks, loop=self.loop)
-
-        if all(res):  # TODO: actual condition
-            node['recv'] += 1
-            if node['trigger']._callbacks:
-                node['trigger'].set_result(True)
-                node['trigger'] = asyncio.Future(loop=self.loop)
-            return True
-        else:
-            # TODO: stop the envelope execution
-            return False
-
-    @asyncio.coroutine
-    def consumer_end_event(
-            self, node: dict, envelope_id: str, event_id: str, nb_items: int
-    ) -> bool:
-        """Forward the end of the event to the consumers.
-
-        :param node:
-         the consumer node
-
-        :param envelope_id:
-         the UUID of the envelope which contains the event
-
-        :param event_id:
-         the UUID of the event
-
-        :return:
-         True if successful, False otherwise
-        """
-        while node['recv'] < nb_items:
-            trigger_res = yield from node['trigger']
-            if trigger_res is False:
-                # TODO: stop the envelope execution
-                return False
-
-        consumer_ids = node['role_ids']
-        tasks = []
-        envelope = self.envelopes[envelope_id]
-        event = envelope[event_id]
-        for consumer_id in consumer_ids:
-            consumer = self.node_registry[consumer_id]
-            task = asyncio.async(
-                consumer.call.end_event(envelope_id, event_id),
-                loop=self.loop
-            )
-            tasks.append(task)
-
-        res = yield from asyncio.gather(*tasks, loop=self.loop)
-
-        if all(res):
-            node['done'] = True
-            if envelope['trigger']._callbacks:
-                envelope['trigger'].set_result(True)
-                envelope['trigger'] = asyncio.Future(loop=self.loop)
-            return True
-        else:
-            # TODO: stop the envelope execution
-            return False
-
-    @asyncio.coroutine
-    def consumer_end_envelope(
-            self, node: dict, envelope_id: str
-    ) -> bool:
-        """Forward the end of the envelope to the consumers.
-
-        :param node:
-         the consumer node
-
-        :param envelope_id:
-         the UUID of the envelope
-
-        :return:
-         True if successful, False otherwise
-        """
-        consumer_ids = node['role_ids']
-        tasks = []
-        for consumer_id in consumer_ids:
-            consumer = self.node_registry[consumer_id]
-            envelope = self.envelopes[envelope_id]
-            task = asyncio.async(
-                consumer.call.end_envelope(envelope_id),
-                loop=self.loop
-            )
-            tasks.append(task)
-
-        res = yield from asyncio.gather(*tasks, loop=self.loop)
-        if all(res):
-            return True
-        else:
-            # TODO: stop the envelope execution
-            return False
-
-    @asyncio.coroutine
-    def consumer_cancel_envelope(self, node: dict, envelope_id: str):
-        """Forward the cancellation of the envelope to the consumers.
-
-        :param node:
-         the consumer node
-
-        :param envelope_id:
-         the UUID of the envelope
-
-        :return:
-         True if successful, False otherwise
-        """
-
-        # TODO: stop the envelope execution
-        pass
+        return envelope_id
 
     @asyncio.coroutine
     def get_event_tree(self, type_id: str) -> list:
