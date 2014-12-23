@@ -2,14 +2,38 @@ Source code documentation
 =========================
 
 
-FrontEnd
---------
+Front-End
+---------
 
-.. automodule:: xbus.broker.core.front
+Front-end RPC
+"""""""""""""
+
+.. automodule:: xbus.broker.core.front.rpc
    :members:
 
-BackEnd
--------
+Back-End
+--------
 
-.. automodule:: xbus.broker.core.back
+Back-end RPC
+""""""""""""
+
+.. automodule:: xbus.broker.core.back.rpc
+   :members:
+
+Envelope
+""""""""
+
+.. automodule:: xbus.broker.core.back.envelope
+   :members:
+
+Event
+"""""
+
+.. automodule:: xbus.broker.core.back.event
+   :members:
+
+Node
+""""
+
+.. automodule:: xbus.broker.core.back.node
    :members:

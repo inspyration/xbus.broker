@@ -8,21 +8,22 @@ class Node(object):
     """a Node instance represents one node in the event datastructure that is
     manipulated by the backend."""
 
-    def __init__(self, envelope_id, event_id, loop=None):
+    def __init__(self, envelope_id, event_id, node_id, loop=None):
         """create a new event instance that will be manipulated by the backend,
         it provides a few helper methods and some interesting attributes like
         the event type name and event type id
         """
         self.envelope_id = envelope_id
         self.event_id = event_id
-        self.uuid = None
-        self.sent = -1
+        self.node_id = node_id
+        self.sent = 0
         self.recv = -1
         self.loop = loop
         self.active = False
         self.done = False
         self.trigger = asyncio.Future(loop=loop)
 
+    @asyncio.coroutine
     def wait_trigger(self, index=0):
 
         while self.recv < index:
@@ -42,11 +43,12 @@ class Node(object):
 class WorkerNode(Node):
 
     def __init__(
-        self, uuid: str, node_id: str, client, role_id, children, loop=None
+        self, envelope_id: str, event_id: str, node_id: str, role_id: str,
+        client, children, loop=None
     ):
-
-        super(WorkerNode, self).__init__(uuid, node_id, client, loop)
+        super(WorkerNode, self).__init__(envelope_id, event_id, node_id, loop)
         self.role_id = role_id
+        self.client = client
         self.children = children
 
     @staticmethod
@@ -56,10 +58,14 @@ class WorkerNode(Node):
 
 class ConsumerNode(Node):
 
-    def __init__(self, uuid: str, node_id: str, client, role_ids, loop=None):
-
-        super(ConsumerNode, self).__init__(uuid, node_id, client, loop)
+    def __init__(
+        self, envelope_id: str, event_id: str, node_id: str, role_ids: list,
+        clients, loop=None
+    ):
+        super(ConsumerNode, self).__init__(envelope_id, event_id, node_id, loop)
         self.role_ids = role_ids
+        self.clients = clients
+        self.done = False
 
     @staticmethod
     def is_consumer():

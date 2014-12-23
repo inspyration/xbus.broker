@@ -9,14 +9,12 @@ from collections import defaultdict
 
 from sqlalchemy.sql import select
 
-from xbus.broker.model import envelope
 from xbus.broker.model import role
 from xbus.broker.model import validate_password
 from xbus.broker.model.helpers import get_event_tree
 from xbus.broker.model.helpers import get_consumer_roles
 
 from xbus.broker.core.base import XbusBrokerBase
-from xbus.broker.core.back.event import Event
 from xbus.broker.core.back.envelope import Envelope
 
 
@@ -278,48 +276,42 @@ class XbusBrokerBack(XbusBrokerBase):
         if envelope is None:
             errors.append("No such envelope : {}".format(envelope_id))
 
-        elif event_id in envelope:
+        elif event_id in envelope.events:
             errors.append("Event already started: {}".format(event_id))
 
         if errors:
             res = (1, "\n".join(errors))
             return res
 
-        event = Event(event_id, type_name, type_id)
-        envelope[event_id] = event
-
+        event = envelope.new_event(event_id, type_name, type_id)
         rows = yield from self.get_event_tree(type_id)
         nodes = {}
-        start = []
+
         for row in rows:
             node_id, service_id, is_start, child_ids = row.as_tuple()
             service_roles = self.active_roles[service_id]
-            if is_start:
-                start.append(node_id)
+
             if child_ids:     # Workers
                 if not service_roles:
                     return False
                 role_id = service_roles.pop()
                 client = self.node_registry[role_id]
-                event.add_worker_node(node_id, role_id, client, child_ids)
+                event.new_worker(node_id, role_id, client, child_ids, is_start)
+
             else:             # Consumers
-                clients = {r: self.node_registry[r] for r in service_roles}
-                event.new_consumer_node(node_id, clients)
+                role_ids = list(service_roles)
+                clients = [self.node_registry[r] for r in service_roles]
+                event.new_consumer(node_id, role_ids, clients, is_start)
                 consumers = self.consumers[service_id]
                 inactive_consumers = consumers - service_roles
                 # TODO do something with these...
 
-        event.set_graph(start)
-
-        for node in start:
-            if node['consumer']:
-                coro = self.consumer_start_event
+        for node in event.start:
+            if node.is_consumer():
+                coro = envelope.consumer_start_event
             else:
-                coro = self.worker_start_event
-            asyncio.async(
-                coro(node, envelope_id, event_id, type_id, type_name),
-                loop=self.loop
-            )
+                coro = envelope.worker_start_event
+            asyncio.async(coro(node, event), loop=self.loop)
         res = (0, "{}".format(event_id))
         return res
 
@@ -352,19 +344,18 @@ class XbusBrokerBack(XbusBrokerBase):
             res = (1, 'No such envelope')
             return res
 
-        event = envelope.get(event_id)
+        event = envelope.events.get(event_id)
         if not event:
             res = (1, 'No such event')
             return res
 
         for node in event.start:
-            if node['consumer']:
-                coro = self.consumer_send_item
+            if node.is_consumer():
+                coro = envelope.consumer_send_item
             else:
-                coro = self.worker_send_item
+                coro = envelope.worker_send_item
             asyncio.async(
-                coro(node, envelope_id, event_id, [index], data, index),
-                loop=self.loop
+                coro(node, event, [index], data, index), loop=self.loop
             )
 
         res = (0, "{}".format(event_id))
@@ -384,20 +375,18 @@ class XbusBrokerBack(XbusBrokerBase):
          to be defined
         """
 
-        event = self.envelopes[envelope_id][event_id]
+        envelope = self.envelopes[envelope_id]
+        event = envelope.events.get(event_id)
         if not event:
             res = (1, "No such event")
             return res
 
         for node in event.start:
-            if node['consumer']:
-                coro = self.consumer_end_event
+            if node.is_consumer():
+                coro = envelope.consumer_end_event
             else:
-                coro = self.worker_end_event
-            asyncio.async(
-                coro(node, envelope_id, event_id, nb_items),
-                loop=self.loop
-            )
+                coro = envelope.worker_end_event
+            asyncio.async(coro(node, event, nb_items), loop=self.loop)
 
         res = (0, event_id)
         return res
@@ -420,7 +409,7 @@ class XbusBrokerBack(XbusBrokerBase):
             res = (1, 'No such envelope')
             return res
 
-        asyncio.async(envelope.end_envelope(), loop=self.loop)
+        asyncio.async(envelope.async_end_envelope(), loop=self.loop)
         return {
             'success': True,
             'envelope_id': envelope_id,
@@ -508,20 +497,6 @@ class XbusBrokerBack(XbusBrokerBase):
                 return row.as_tuple()
             else:
                 return None, None, None
-
-    @asyncio.coroutine
-    def update_envelope_state_done(self, envelope_id: str):
-        """Internal helper method used to log the successful execution of all
-        events in the envelope.
-
-        :param envelope_id:
-         the UUID of the envelope.
-        """
-        with (yield from self.dbengine) as conn:
-            update = envelope.update()
-            update = update.where(envelope.c.id == envelope_id)
-            update = update.values(state='done')
-            yield from conn.execute(update)
 
 
 @asyncio.coroutine
