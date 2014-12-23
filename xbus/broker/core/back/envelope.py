@@ -69,10 +69,8 @@ class Envelope(object):
             else:
                 worker_nodes.append(node)
 
-        print([node.done for node in consumer_nodes])
         while not all(node.done for node in consumer_nodes):
             trigger_res = yield from self.trigger
-            print('re', [node.done for node in consumer_nodes])
             if trigger_res is False:
                 # TODO: stop the envelope execution
                 return False
