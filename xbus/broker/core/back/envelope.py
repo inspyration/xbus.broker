@@ -11,6 +11,18 @@ class Envelope(object):
     execution through the network. It can contain several events."""
 
     def __init__(self, envelope_id: str, dbengine=None, loop=None):
+        """Initializes a new Envelope instance.
+
+        :param envelope_id:
+         the UUID of the envelope
+
+        :param dbengine:
+         the database engine
+
+        :param loop:
+         the event loop used by the backend
+        :return:
+        """
         self.envelope_id = envelope_id
         self.events = {}
         self.dbengine = dbengine

@@ -30,7 +30,7 @@ class Event(object):
          the name of the type of the started event
 
         :param loop:
-         the event loop for the backend
+         the event loop used by the backend
 
         """
         self.envelope_id = envelope_id
@@ -41,15 +41,47 @@ class Event(object):
         self.start = []
         self.loop = loop
 
-    def new_worker(self, node_id, role_id, client, child_id, is_start):
+    def new_worker(self, node_id, role_id, client, children, is_start):
+        """Create a new :class:`.WorkerNode` instance and add it to the event.
+
+        :param node_id:
+         the UUID of the worker node
+
+        :param role_id:
+         the UUID of the role that represents the selected worker.
+
+        :param client:
+         the RPC client that will be used to communicate with the worker.
+
+        :param children:
+         the UUIDs of the children nodes.
+
+        :param is_start:
+         True if the node has no parent node, false otherwise.
+        """
         node = WorkerNode(
             self.envelope_id, self.event_id, node_id, role_id, client,
-            child_id, self.loop
+            children, self.loop
         )
         self._add_node(node, is_start)
         return node
 
     def new_consumer(self, node_id, role_ids, clients, is_start):
+        """Create a new :class:`.ConsumerNode` instance and add it to the
+        event.
+
+        :param node_id:
+         the UUID of the consumer node
+
+        :param role_ids:
+         the UUIDs of the roles that represent the listening consumers.
+
+        :param clients:
+         the RPC clients that will be used to communicate with each consumer.
+
+        :param is_start:
+         True if the node has no parent node, false otherwise.
+        """
         node = ConsumerNode(
             self.envelope_id, self.event_id, node_id, role_ids, clients,
             self.loop
@@ -58,6 +90,8 @@ class Event(object):
         return node
 
     def _add_node(self, node, is_start):
+        """Add a node to the graph of the event.
+        """
         self.nodes[node.node_id] = node
         if is_start:
             self.start.append(node)
