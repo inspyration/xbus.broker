@@ -36,12 +36,14 @@ class Node(object):
         self.trigger = asyncio.Future(loop=loop)
 
     @asyncio.coroutine
-    def wait_trigger(self, index=0):
+    def wait_trigger(self, index=0) -> bool:
         """A coroutine that waits until the node's recv attribute has reached a
-        certain value.
+        certain value or until the envelope is cancelled.
 
         :param index:
          The expected value for the node's recv attribute.
+        :returns:
+         True if the value has been reached, False if it has been cancelled.
         """
 
         while self.recv < index:
@@ -59,6 +61,11 @@ class Node(object):
         if self.trigger._callbacks:
             self.trigger.set_result(True)
             self.trigger = asyncio.Future(loop=self.loop)
+
+    def cancel_trigger(self):
+        """Cause all pending wait_trigger coroutines to return False.
+        """
+        self.trigger.set_result(False)
 
 
 class WorkerNode(Node):

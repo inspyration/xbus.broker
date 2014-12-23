@@ -21,12 +21,13 @@ class Envelope(object):
 
         :param loop:
          the event loop used by the backend
-        :return:
         """
         self.envelope_id = envelope_id
+        self.client_calls = set()
         self.events = {}
         self.dbengine = dbengine
         self.loop = loop
+        self.cancelled = False
         self.trigger = asyncio.Future(loop=loop)
 
     def new_event(self, event_id, type_name, type_id):
@@ -41,13 +42,24 @@ class Envelope(object):
         :param type_name:
          the name of the type of the started event
         """
-
         event = Event(self.envelope_id, event_id, type_name, type_id, self.loop)
         self.events[event_id] = event
         return event
 
     @asyncio.coroutine
-    def async_end_envelope(self):
+    def call_with_timeout(self, call, timeout):
+        task = asyncio.async(call, loop=self.loop)
+        self.client_calls.add(task)
+        try:
+            res = yield from asyncio.wait_for(task, timeout, loop=self.loop)
+            self.client_calls.remove(task)
+            return res
+        except asyncio.TimeoutError as e:
+            asyncio.async(self.cancel_envelope())
+            raise e
+
+    @asyncio.coroutine
+    def end_envelope(self):
         """Wait until every event in the envelope is fully treated, then
         signal the end of envelope to the workers & consumers of all events.
 
@@ -57,8 +69,6 @@ class Envelope(object):
 
         all_nodes = {}
         for key, event in self.events.items():
-            if key == 'trigger':
-                continue
             all_nodes.update(event.nodes)
 
         worker_nodes = []
@@ -93,6 +103,28 @@ class Envelope(object):
         res = yield from asyncio.gather(tasks, loop=self.loop)
         if all(res):
             yield from self.update_envelope_state_done()
+
+
+    @asyncio.coroutine
+    def cancel_envelope(self):
+
+        for call in self.client_calls:
+            call.cancel()
+
+        all_nodes = {}
+        for key, event in self.events.items():
+            if key == 'trigger':
+                continue
+            all_nodes.update(event.nodes)
+
+        for node in all_nodes:
+            node.cancel_trigger()
+            if node.is_consumer:
+                coro = self.consumer_cancel_envelope
+            else:
+                coro = self.worker_cancel_envelope
+            asyncio.async(coro(), loop=self.loop)
+
 
     @asyncio.coroutine
     def worker_start_event(self, node, event) -> bool:

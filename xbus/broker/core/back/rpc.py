@@ -409,7 +409,7 @@ class XbusBrokerBack(XbusBrokerBase):
             res = (1, 'No such envelope')
             return res
 
-        asyncio.async(envelope.async_end_envelope(), loop=self.loop)
+        asyncio.async(envelope.end_envelope(), loop=self.loop)
         return {
             'success': True,
             'envelope_id': envelope_id,
