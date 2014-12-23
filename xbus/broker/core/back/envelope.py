@@ -69,8 +69,10 @@ class Envelope(object):
             else:
                 worker_nodes.append(node)
 
-        while not all(node.get('done', False) for node in consumer_nodes):
+        print([node.done for node in consumer_nodes])
+        while not all(node.done for node in consumer_nodes):
             trigger_res = yield from self.trigger
+            print('re', [node.done for node in consumer_nodes])
             if trigger_res is False:
                 # TODO: stop the envelope execution
                 return False
@@ -210,7 +212,7 @@ class Envelope(object):
                 else:
                     coro = self.worker_end_event
                 asyncio.async(
-                    coro(child, event, node['sent']), loop=self.loop
+                    coro(child, event, node.sent), loop=self.loop
                 )
 
         else:
@@ -348,6 +350,9 @@ class Envelope(object):
         res = yield from asyncio.gather(*tasks, loop=self.loop)
         if all(res):
             node.done = True
+            if self.trigger._callbacks:
+                self.trigger.set_result(True)
+                self.trigger = asyncio.Future(loop=self.loop)
             return True
         else:
             # TODO: stop the envelope execution
