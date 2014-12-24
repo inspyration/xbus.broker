@@ -27,8 +27,12 @@ class Envelope(object):
         self.events = {}
         self.dbengine = dbengine
         self.loop = loop
-        self.cancelled = False
+        self.stopped = False
         self.trigger = asyncio.Future(loop=loop)
+        self.start_event_timeout = 60
+        self.send_item_timeout = 60
+        self.end_event_timeout = 60
+        self.end_envelope_timeout = 60
 
     def new_event(self, event_id, type_name, type_id):
         """Create a new :class:`.Event` instance and add it to the envelope.
@@ -47,7 +51,11 @@ class Envelope(object):
         return event
 
     @asyncio.coroutine
-    def call_with_timeout(self, call, timeout):
+    def watch_call(self, call, timeout):
+        """
+        :param call:
+        :param timeout:
+        """
         task = asyncio.async(call, loop=self.loop)
         self.client_calls.add(task)
         try:
@@ -55,7 +63,7 @@ class Envelope(object):
             self.client_calls.remove(task)
             return res
         except asyncio.TimeoutError as e:
-            asyncio.async(self.cancel_envelope())
+            asyncio.async(self.stop_envelope(), loop=self.loop)
             raise e
 
     @asyncio.coroutine
@@ -82,7 +90,6 @@ class Envelope(object):
         while not all(node.done for node in consumer_nodes):
             trigger_res = yield from self.trigger
             if trigger_res is False:
-                # TODO: stop the envelope execution
                 return False
 
         tasks = []
@@ -104,9 +111,16 @@ class Envelope(object):
         if all(res):
             yield from self.update_envelope_state_done()
 
-
     @asyncio.coroutine
-    def cancel_envelope(self):
+    def stop_envelope(self, cancelled=False):
+        """
+        :param cancelled:
+         True if the envelope has been cancelled by the emitter.
+        """
+
+        if self.stopped:
+            return
+        self.stopped = True
 
         for call in self.client_calls:
             call.cancel()
@@ -117,14 +131,16 @@ class Envelope(object):
                 continue
             all_nodes.update(event.nodes)
 
+        if not cancelled:
+            yield from self.update_envelope_state_stopped()
+
         for node in all_nodes:
             node.cancel_trigger()
             if node.is_consumer:
-                coro = self.consumer_cancel_envelope
+                coro = self.consumer_stop_envelope
             else:
-                coro = self.worker_cancel_envelope
+                coro = self.worker_stop_envelope
             asyncio.async(coro(), loop=self.loop)
-
 
     @asyncio.coroutine
     def worker_start_event(self, node, event) -> bool:
@@ -139,9 +155,10 @@ class Envelope(object):
         :return:
          True if successful, False otherwise
         """
-        res = yield from node.client.call.start_event(
+        call = node.client.call.start_event(
             self.envelope_id, event.event_id, event.type_name
         )
+        res = yield from self.watch_call(call, self.start_event_timeout)
         if res:
             for child_id in node.children:
                 child = event[child_id]
@@ -155,7 +172,7 @@ class Envelope(object):
             return True
 
         else:
-            # TODO: stop the envelope execution
+            asyncio.async(self.stop_envelope(), loop=self.loop)
             return False
 
     @asyncio.coroutine
@@ -187,9 +204,10 @@ class Envelope(object):
         if trigger_res is False:
             return False
 
-        reply = yield from node.client.call.send_item(
+        call = node.client.call.send_item(
             self.envelope_id, event.event_id, indices, data
         )
+        reply = yield from self.watch_call(call, self.send_item_timeout)
         if reply:
             for child_id in node.children:
                 child = event[child_id]
@@ -208,7 +226,7 @@ class Envelope(object):
             return True
 
         else:
-            # TODO: stop the envelope execution
+            asyncio.async(self.stop_envelope(), loop=self.loop)
             return False
 
     @asyncio.coroutine
@@ -231,9 +249,8 @@ class Envelope(object):
         if trigger_res is False:
             return False
 
-        reply = yield from node.client.call.end_event(
-            self.envelope_id, event.event_id
-        )
+        call = node.client.call.end_event(self.envelope_id, event.event_id)
+        reply = yield from self.watch_call(call, self.end_event_timeout)
         if reply:
             for child_id in node.children:
                 child = event[child_id]
@@ -246,7 +263,7 @@ class Envelope(object):
                 )
 
         else:
-            # TODO: stop the envelope execution
+            asyncio.async(self.stop_envelope(), loop=self.loop)
             return False
 
     @asyncio.coroutine
@@ -259,15 +276,16 @@ class Envelope(object):
         :return:
          True if successful, False otherwise
         """
-        reply = yield from node.client.call.end_envelope(self.envelope_id)
+        call = node.client.call.end_envelope(self.envelope_id)
+        reply = yield from self.watch_call(call, self.end_envelope_timeout)
         if reply:
             return True
         else:
-            # TODO: stop the envelope execution
+            asyncio.async(self.stop_envelope(), loop=self.loop)
             return False
 
     @asyncio.coroutine
-    def worker_cancel_envelope(self, node):
+    def worker_stop_envelope(self, node):
         """Forward the cancellation of the envelope to the workers.
 
         :param node:
@@ -276,9 +294,8 @@ class Envelope(object):
         :return:
          True if successful, False otherwise
         """
-
-        # TODO: stop the envelope execution
-        pass
+        corobj = node.client.call.stop_envelope(self.envelope_id)
+        asyncio.async(corobj, loop=self.loop)
 
     @asyncio.coroutine
     def consumer_start_event(self, node, event) -> bool:
@@ -295,9 +312,10 @@ class Envelope(object):
         """
         tasks = []
         for client in node.clients:
-            corobj = client.call.start_event(
+            call = client.call.start_event(
                 self.envelope_id, event.event_id, event.type_name
             )
+            corobj = self.watch_call(call, self.start_event_timeout)
             tasks.append(asyncio.async(corobj, loop=self.loop))
 
         res = yield from asyncio.gather(*tasks, loop=self.loop)
@@ -305,8 +323,7 @@ class Envelope(object):
             node.next_trigger()
             return True
         else:
-            # TODO: stop the envelope execution
-            return False
+            asyncio.async(self.stop_envelope(), loop=self.loop)
 
     @asyncio.coroutine
     def consumer_send_item(
@@ -339,17 +356,18 @@ class Envelope(object):
 
         tasks = []
         for client in node.clients:
-            corobj = client.call.send_item(
+            call = client.call.send_item(
                 self.envelope_id, event.event_id, indices, data
             )
+            corobj = self.watch_call(call, self.send_item_timeout)
             tasks.append(asyncio.async(corobj, loop=self.loop))
 
         res = yield from asyncio.gather(*tasks, loop=self.loop)
-        if all(res):  # TODO: actual condition
+        if all(res):
             node.next_trigger()
             return True
         else:
-            # TODO: stop the envelope execution
+            asyncio.async(self.stop_envelope(), loop=self.loop)
             return False
 
     @asyncio.coroutine
@@ -374,7 +392,8 @@ class Envelope(object):
 
         tasks = []
         for client in node.clients:
-            corobj = client.call.end_event(self.envelope_id, event.event_id)
+            call = client.call.end_event(self.envelope_id, event.event_id)
+            corobj = self.watch_call(call, self.end_event_timeout)
             tasks.append(asyncio.async(corobj, loop=self.loop))
 
         res = yield from asyncio.gather(*tasks, loop=self.loop)
@@ -385,7 +404,7 @@ class Envelope(object):
                 self.trigger = asyncio.Future(loop=self.loop)
             return True
         else:
-            # TODO: stop the envelope execution
+            asyncio.async(self.stop_envelope(), loop=self.loop)
             return False
 
     @asyncio.coroutine
@@ -400,18 +419,19 @@ class Envelope(object):
         """
         tasks = []
         for client in node.clients:
-            corobj = client.call.end_envelope(self.envelope_id)
+            call = client.call.end_envelope(self.envelope_id)
+            corobj = self.watch_call(call, self.end_envelope_timeout)
             tasks.append(asyncio.async(corobj, loop=self.loop))
 
         res = yield from asyncio.gather(*tasks, loop=self.loop)
         if all(res):
             return True
         else:
-            # TODO: stop the envelope execution
+            asyncio.async(self.stop_envelope(), loop=self.loop)
             return False
 
     @asyncio.coroutine
-    def consumer_cancel_envelope(self, node: dict):
+    def consumer_stop_envelope(self, node):
         """Forward the cancellation of the envelope to the consumers.
 
         :param node:
@@ -421,8 +441,9 @@ class Envelope(object):
          True if successful, False otherwise
         """
 
-        # TODO: stop the envelope execution
-        pass
+        for client in node.clients:
+            corobj = client.call.stop_envelope(self.envelope_id)
+            asyncio.async(corobj, loop=self.loop)
 
     @asyncio.coroutine
     def update_envelope_state_done(self):
@@ -433,6 +454,17 @@ class Envelope(object):
             update = envelope.update()
             update = update.where(envelope.c.id == self.envelope_id)
             update = update.values(state='done')
+            yield from conn.execute(update)
+
+    @asyncio.coroutine
+    def update_envelope_state_stopped(self):
+        """Internal helper method used to log the successful execution of all
+        events in the envelope.
+        """
+        with (yield from self.dbengine) as conn:
+            update = envelope.update()
+            update = update.where(envelope.c.id == self.envelope_id)
+            update = update.values(state='stop')
             yield from conn.execute(update)
 
     def __getitem__(self, key):

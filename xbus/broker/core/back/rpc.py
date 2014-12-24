@@ -410,6 +410,7 @@ class XbusBrokerBack(XbusBrokerBase):
             return res
 
         asyncio.async(envelope.end_envelope(), loop=self.loop)
+        del self.envelopes[envelope]
         return {
             'success': True,
             'envelope_id': envelope_id,
@@ -428,29 +429,19 @@ class XbusBrokerBack(XbusBrokerBase):
         :return:
          the UUID of the envelope that has just been cancelled
         """
-        # TODO: call all the active consumers that are concerned so they can
-        # rollback their current work on the envelope
 
-        envelope = self.envelopes[envelope_id]
-        all_nodes = {}
-        for event in envelope:
-            all_nodes.update(event.nodes)
+        envelope = self.envelopes.get(envelope_id)
+        if not envelope:
+            res = (1, 'No such envelope')
+            return res
 
-        for node in all_nodes.values():
-            if node['consumer']:
-                coro = self.consumer_cancel_envelope
-            else:
-                coro = self.worker_cancel_envelope
-            asyncio.async(
-                coro(node, envelope_id),
-                loop=self.loop
-            )
-
+        asyncio.async(envelope.stop_envelope(cancelled=True), loop=self.loop)
+        del self.envelopes[envelope]
         return envelope_id
 
     @asyncio.coroutine
     def get_event_tree(self, type_id: str) -> list:
-        """internal helper method used to find all nodes and the links
+        """Internal helper method used to find all nodes and the links
         between them that constitute the execution tree of an event type.
 
         See xbus_get_event_tree in xbus_monitor/xbus/monitor/scripts/func.sql
