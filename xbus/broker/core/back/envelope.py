@@ -117,7 +117,6 @@ class Envelope(object):
         :param cancelled:
          True if the envelope has been cancelled by the emitter.
         """
-
         if self.stopped:
             return
         self.stopped = True
@@ -127,20 +126,18 @@ class Envelope(object):
 
         all_nodes = {}
         for key, event in self.events.items():
-            if key == 'trigger':
-                continue
             all_nodes.update(event.nodes)
 
         if not cancelled:
             yield from self.update_envelope_state_stopped()
 
-        for node in all_nodes:
+        for node in all_nodes.values():
             node.cancel_trigger()
-            if node.is_consumer:
+            if node.is_consumer():
                 coro = self.consumer_stop_envelope
             else:
                 coro = self.worker_stop_envelope
-            asyncio.async(coro(), loop=self.loop)
+            asyncio.async(coro(node), loop=self.loop)
 
     @asyncio.coroutine
     def worker_start_event(self, node, event) -> bool:
@@ -155,6 +152,9 @@ class Envelope(object):
         :return:
          True if successful, False otherwise
         """
+        if self.stopped:
+            return False
+
         call = node.client.call.start_event(
             self.envelope_id, event.event_id, event.type_name
         )
@@ -201,7 +201,7 @@ class Envelope(object):
          True if successful, False otherwise
         """
         trigger_res = yield from node.wait_trigger(forward_index)
-        if trigger_res is False:
+        if trigger_res is False or self.stopped:
             return False
 
         call = node.client.call.send_item(
@@ -246,7 +246,7 @@ class Envelope(object):
          True if successful, False otherwise
         """
         trigger_res = yield from node.wait_trigger(nb_items)
-        if trigger_res is False:
+        if trigger_res is False or self.stopped:
             return False
 
         call = node.client.call.end_event(self.envelope_id, event.event_id)
@@ -276,6 +276,9 @@ class Envelope(object):
         :return:
          True if successful, False otherwise
         """
+        if self.stopped:
+            return False
+
         call = node.client.call.end_envelope(self.envelope_id)
         reply = yield from self.watch_call(call, self.end_envelope_timeout)
         if reply:
@@ -310,6 +313,9 @@ class Envelope(object):
         :return:
          True if successful, False otherwise
         """
+        if self.stopped:
+            return False
+
         tasks = []
         for client in node.clients:
             call = client.call.start_event(
@@ -351,7 +357,7 @@ class Envelope(object):
          True if successful, False otherwise
         """
         trigger_res = yield from node.wait_trigger(forward_index)
-        if trigger_res is False:
+        if trigger_res is False or self.stopped:
             return False
 
         tasks = []
@@ -387,7 +393,7 @@ class Envelope(object):
          True if successful, False otherwise
         """
         trigger_res = yield from node.wait_trigger(nb_items)
-        if trigger_res is False:
+        if trigger_res is False or self.stopped:
             return False
 
         tasks = []
@@ -417,6 +423,9 @@ class Envelope(object):
         :return:
          True if successful, False otherwise
         """
+        if self.stopped:
+            return False
+
         tasks = []
         for client in node.clients:
             call = client.call.end_envelope(self.envelope_id)
