@@ -54,10 +54,9 @@ event_error = Table(
     Column('envelope_id', UUID,
            ForeignKey('envelope.id', ondelete='CASCADE'),
            index=True, nullable=False),
-    Column('event_id', UUID,
-           ForeignKey('event.id', ondelete='CASCADE')),
-    Column('service_id', UUID,
-           ForeignKey('service.id', ondelete='CASCADE')),
+    Column('event_id', UUID, ForeignKey('event.id', ondelete='CASCADE')),
+    Column('node_id', UUID, ForeignKey('node.id', ondelete='SET NULL')),
+    Column('role_id', UUID, ForeignKey('role.id', ondelete='SET NULL')),
     Column('items', Text),
     Column('message', Text),
     Column('error_date', DateTime, nullable=False, default=func.localtimestamp)

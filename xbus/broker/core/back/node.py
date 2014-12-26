@@ -63,7 +63,7 @@ class Node(object):
             self.trigger = asyncio.Future(loop=self.loop)
 
     def cancel_trigger(self):
-        """Cause all pending wait_trigger coroutines to return False.
+        """Cause all pending :meth:`wait_trigger` coroutines to return False.
         """
         self.trigger.set_result(False)
 

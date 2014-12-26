@@ -3,6 +3,8 @@ __author__ = 'jgavrel'
 
 import asyncio
 from xbus.broker.model.logging import envelope
+from xbus.broker.model.logging import event as event_model
+from xbus.broker.model.logging import event_error
 from xbus.broker.core.back.event import Event
 
 
@@ -33,6 +35,7 @@ class Envelope(object):
         self.send_item_timeout = 60
         self.end_event_timeout = 60
         self.end_envelope_timeout = 60
+        self.stop_envelope_timeout = 60
 
     def new_event(self, event_id, type_name, type_id):
         """Create a new :class:`.Event` instance and add it to the envelope.
@@ -52,19 +55,31 @@ class Envelope(object):
 
     @asyncio.coroutine
     def watch_call(self, call, timeout):
-        """
+        """Call a coroutine with a timeout. The created :class:`asyncio.Task`
+        instance is stored in the Envelope object and will be cancelled if the
+        :meth:`stop_envelope` method is called.
+        This method was primarily intended to be used for the start_event,
+        send_data and end_event RPC calls on workers and consumers.
+
         :param call:
+         a remote call to a worker or consumer's method.
+
         :param timeout:
+         the period of time in seconds after which the call is cancelled.
+
+        :raises asyncio.TimeoutError:
+         if the timeout occurs before the call is completed.
         """
         task = asyncio.async(call, loop=self.loop)
         self.client_calls.add(task)
         try:
             res = yield from asyncio.wait_for(task, timeout, loop=self.loop)
-            self.client_calls.remove(task)
             return res
-        except asyncio.TimeoutError as e:
-            asyncio.async(self.stop_envelope(), loop=self.loop)
-            raise e
+        finally:
+            try:
+                self.client_calls.remove(task)
+            except KeyError:
+                pass
 
     @asyncio.coroutine
     def end_envelope(self):
@@ -96,16 +111,12 @@ class Envelope(object):
 
         for node in consumer_nodes:
             task = asyncio.async(
-                self.consumer_end_envelope(node),
-                loop=self.loop
+                self.consumer_end_envelope(node), loop=self.loop
             )
             tasks.append(task)
 
         for node in worker_nodes:
-            asyncio.async(
-                self.worker_end_envelope(node),
-                loop=self.loop
-            )
+            asyncio.async(self.worker_end_envelope(node), loop=self.loop)
 
         res = yield from asyncio.gather(tasks, loop=self.loop)
         if all(res):
@@ -114,6 +125,9 @@ class Envelope(object):
     @asyncio.coroutine
     def stop_envelope(self, cancelled=False):
         """
+        Stops the envelope by cancelling any planned or ongoing RPC call,
+        updating the envelope's state in the database, and calling the
+        stop_envelope RPC method of every worker and consumer involved.
         :param cancelled:
          True if the envelope has been cancelled by the emitter.
         """
@@ -121,16 +135,20 @@ class Envelope(object):
             return
         self.stopped = True
 
+        # Cancel ongoing RPC calls
         for call in self.client_calls:
             call.cancel()
 
         all_nodes = {}
+        # Cancel planned (ie blocked by wait_trigger) RPC calls
         for key, event in self.events.items():
             all_nodes.update(event.nodes)
 
+        # Update the envelope's state, unless the front-end already did so.
         if not cancelled:
             yield from self.update_envelope_state_stopped()
 
+        # Warn the workers and consumers
         for node in all_nodes.values():
             node.cancel_trigger()
             if node.is_consumer():
@@ -158,8 +176,15 @@ class Envelope(object):
         call = node.client.call.start_event(
             self.envelope_id, event.event_id, event.type_name
         )
-        res = yield from self.watch_call(call, self.start_event_timeout)
-        if res:
+        try:
+            res = yield from self.watch_call(call, self.start_event_timeout)
+            success, reply = res
+        except (TypeError, ValueError):
+            success, reply = False, [([], "Malformed reply to start_event.")]
+        except asyncio.TimeoutError:
+            success, reply = False, [([], "Worker timed out.")]
+
+        if success:
             for child_id in node.children:
                 child = event[child_id]
                 if child.is_consumer():
@@ -172,6 +197,7 @@ class Envelope(object):
             return True
 
         else:
+            self.log_event_errors(reply, event, node)
             asyncio.async(self.stop_envelope(), loop=self.loop)
             return False
 
@@ -207,8 +233,15 @@ class Envelope(object):
         call = node.client.call.send_item(
             self.envelope_id, event.event_id, indices, data
         )
-        reply = yield from self.watch_call(call, self.send_item_timeout)
-        if reply:
+        try:
+            res = yield from self.watch_call(call, self.send_item_timeout)
+            success, reply = res
+        except (TypeError, ValueError):
+            success, reply = False, [(indices, "Malformed reply data.")]
+        except asyncio.TimeoutError:
+            success, reply = False, [(indices, "Worker timed out.")]
+
+        if success:
             for child_id in node.children:
                 child = event[child_id]
                 for i, (rep_indices, rep_data) in enumerate(reply):
@@ -221,11 +254,10 @@ class Envelope(object):
                         loop=self.loop
                     )
                 node.sent += 1
-
             node.next_trigger()
             return True
-
         else:
+            self.log_event_errors(reply, event, node)
             asyncio.async(self.stop_envelope(), loop=self.loop)
             return False
 
@@ -250,7 +282,14 @@ class Envelope(object):
             return False
 
         call = node.client.call.end_event(self.envelope_id, event.event_id)
-        reply = yield from self.watch_call(call, self.end_event_timeout)
+        try:
+            res = yield from self.watch_call(call, self.end_event_timeout)
+            success, reply = res
+        except (TypeError, ValueError):
+            success, reply = False, [([], "Malformed reply to end_event.")]
+        except asyncio.TimeoutError:
+            success, reply = False, [([], "Worker timed out.")]
+
         if reply:
             for child_id in node.children:
                 child = event[child_id]
@@ -261,8 +300,8 @@ class Envelope(object):
                 asyncio.async(
                     coro(child, event, node.sent), loop=self.loop
                 )
-
         else:
+            self.log_event_errors(reply, event, node)
             asyncio.async(self.stop_envelope(), loop=self.loop)
             return False
 
@@ -280,15 +319,23 @@ class Envelope(object):
             return False
 
         call = node.client.call.end_envelope(self.envelope_id)
-        reply = yield from self.watch_call(call, self.end_envelope_timeout)
-        if reply:
+        timeout = self.end_envelope_timeout
+        try:
+            res = yield from asyncio.wait_for(call, timeout, loop=self.loop)
+            success, reply = res
+        except (TypeError, ValueError):
+            success, reply = False, [([], "Malformed reply to end_envelope.")]
+        except asyncio.TimeoutError:
+            success, reply = False, [([], "Worker timed out.")]
+
+        if success:
             return True
         else:
-            asyncio.async(self.stop_envelope(), loop=self.loop)
+            self.log_event_errors(reply, event=None, node)
             return False
 
     @asyncio.coroutine
-    def worker_stop_envelope(self, node):
+    def worker_stop_envelope(self, node) -> bool:
         """Forward the cancellation of the envelope to the workers.
 
         :param node:
@@ -297,8 +344,13 @@ class Envelope(object):
         :return:
          True if successful, False otherwise
         """
-        corobj = node.client.call.stop_envelope(self.envelope_id)
-        asyncio.async(corobj, loop=self.loop)
+        call = node.client.call.stop_envelope(self.envelope_id)
+        timeout = self.stop_envelope_timeout
+        try:
+            yield from asyncio.wait_for(call, timeout, loop=self.loop)
+            return True
+        except asyncio.TimeoutError:
+            return False
 
     @asyncio.coroutine
     def consumer_start_event(self, node, event) -> bool:
@@ -324,7 +376,11 @@ class Envelope(object):
             corobj = self.watch_call(call, self.start_event_timeout)
             tasks.append(asyncio.async(corobj, loop=self.loop))
 
-        res = yield from asyncio.gather(*tasks, loop=self.loop)
+        try:
+            res = yield from asyncio.gather(*tasks, loop=self.loop)
+        except asyncio.TimeoutError:
+            errors = [([], "Connection with the consumer timed out.")]
+
         if all(res):
             node.next_trigger()
             return True
@@ -368,11 +424,20 @@ class Envelope(object):
             corobj = self.watch_call(call, self.send_item_timeout)
             tasks.append(asyncio.async(corobj, loop=self.loop))
 
-        res = yield from asyncio.gather(*tasks, loop=self.loop)
-        if all(res):
+        try:
+            res = yield from asyncio.gather(*tasks, loop=self.loop)
+            errors = [
+                reply for success, replies in res if not success
+                for reply in replies
+            ]
+        except (TypeError, ValueError):
+            errors = [(indices, "Malformed reply data.")]
+
+        if not errors:
             node.next_trigger()
             return True
         else:
+            self.log_event_errors(errors, event, node)
             asyncio.async(self.stop_envelope(), loop=self.loop)
             return False
 
@@ -475,6 +540,38 @@ class Envelope(object):
             update = update.where(envelope.c.id == self.envelope_id)
             update = update.values(state='stop')
             yield from conn.execute(update)
+
+    @asyncio.coroutine
+    def log_event_errors(self, errors, event=None, node=None):
+        envelope_id = self.envelope_id
+        event_id = event.event_id if event else None
+        node_id = node.node_id if node else None
+        with (yield from self.dbengine) as conn:
+            insert = event_error.insert()
+            yield from insert.execute(
+                dict(
+                    envelope_id=envelope_id, event_id=event_id,
+                    node_id=node_id, items=items, message=message
+                ) for items, message in self.error_format(errors)
+            )
+
+    @staticmethod
+    def error_format(errors):
+        try:
+            errors_iter = iter(errors)
+        except TypeError:
+            yield (None, "Invalid error format")
+            return
+        for error in errors_iter:
+            try:
+                indices, message = error
+                items = ','.join(indices)
+                if isinstance(message, str):
+                    yield (items, message)
+                else:
+                    yield (items, "Invalid error message")
+            except (TypeError, ValueError):
+                yield (None, "Invalid error format")
 
     def __getitem__(self, key):
         return self.events[key]
