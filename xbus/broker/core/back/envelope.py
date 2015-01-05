@@ -331,7 +331,7 @@ class Envelope(object):
         if success:
             return True
         else:
-            self.log_event_errors(reply, event=None, node)
+            self.log_event_errors(reply, None, node)
             return False
 
     @asyncio.coroutine
