@@ -379,6 +379,7 @@ class Envelope(object):
         try:
             res = yield from asyncio.gather(*tasks, loop=self.loop)
         except asyncio.TimeoutError:
+            res = [False]
             errors = [([], "Connection with the consumer timed out.")]
 
         if all(res):
