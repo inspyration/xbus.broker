@@ -55,7 +55,7 @@ event_error = Table(
            ForeignKey('envelope.id', ondelete='CASCADE'),
            index=True, nullable=False),
     Column('event_id', UUID, ForeignKey('event.id', ondelete='CASCADE')),
-    Column('node_id', UUID, ForeignKey('node.id', ondelete='SET NULL')),
+    Column('node_id', UUID, ForeignKey('event_node.id', ondelete='SET NULL')),
     Column('role_id', UUID, ForeignKey('role.id', ondelete='SET NULL')),
     Column('items', Text),
     Column('message', Text),
