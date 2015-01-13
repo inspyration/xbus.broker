@@ -89,11 +89,7 @@ event_error_tracking = Table(
     ),
     Column('date', DateTime, nullable=False, default=func.localtimestamp),
     Column('comment', Text, nullable=False),
-    Column(
-        'state',
-        Enum(*EVENT_ERROR_STATES, name='event_error_state'),
-        nullable=False,
-    ),
+    Column('new_state', Enum(*EVENT_ERROR_STATES, name='event_error_state')),
 )
 
 item = Table(
