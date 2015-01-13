@@ -48,6 +48,14 @@ event = Table(
     Column('sent_items', Integer),
 )
 
+EVENT_ERROR_STATES = [
+    'unprocessed',
+    'processing',
+    'on_hold',
+    'corrected',
+    'won_t_fix',
+]
+
 event_error = Table(
     'event_error', metadata,
     Column('id', UUID, default=uuid4, primary_key=True),
@@ -59,7 +67,9 @@ event_error = Table(
     Column('role_id', UUID, ForeignKey('role.id', ondelete='SET NULL')),
     Column('items', Text),
     Column('message', Text),
-    Column('error_date', DateTime, nullable=False, default=func.localtimestamp)
+    Column('error_date', DateTime, nullable=False, default=func.localtimestamp),
+    Column('state', Enum(*EVENT_ERROR_STATES, name='event_error_state'),
+           nullable=False, default='unprocessed'),
 )
 
 item = Table(
