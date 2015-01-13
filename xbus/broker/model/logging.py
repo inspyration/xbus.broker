@@ -56,6 +56,7 @@ EVENT_ERROR_STATES = [
     'won_t_fix',
 ]
 
+# Errors launched when processing an event (as part of an envelope).
 event_error = Table(
     'event_error', metadata,
     Column('id', UUID, default=uuid4, primary_key=True),
@@ -70,6 +71,29 @@ event_error = Table(
     Column('error_date', DateTime, nullable=False, default=func.localtimestamp),
     Column('state', Enum(*EVENT_ERROR_STATES, name='event_error_state'),
            nullable=False, default='unprocessed'),
+)
+
+# Track comments and state changes of event errors.
+event_error_tracking = Table(
+    'event_error_tracking', metadata,
+    Column('id', UUID, default=uuid4, primary_key=True),
+    Column(
+        'event_error_id', UUID,
+        ForeignKey('event_error.id', ondelete='CASCADE'),
+        index=True, nullable=False,
+    ),
+    Column(
+        'user_id', UUID,
+        ForeignKey('user.user_id', ondelete='RESTRICT'),
+        nullable=False,
+    ),
+    Column('date', DateTime, nullable=False, default=func.localtimestamp),
+    Column('comment', Text, nullable=False),
+    Column(
+        'state',
+        Enum(*EVENT_ERROR_STATES, name='event_error_state'),
+        nullable=False,
+    ),
 )
 
 item = Table(

@@ -25,4 +25,5 @@ from xbus.broker.model.input import input_descriptor
 from xbus.broker.model.logging import envelope
 from xbus.broker.model.logging import event
 from xbus.broker.model.logging import event_error
+from xbus.broker.model.logging import event_error_tracking
 from xbus.broker.model.logging import item
