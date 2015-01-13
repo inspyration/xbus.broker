@@ -1,6 +1,7 @@
 # -*- encoding: utf-8 -*-
 __author__ = 'jgavrel'
 
+import datetime
 from uuid import uuid4
 
 from sqlalchemy import Table
@@ -11,7 +12,6 @@ from sqlalchemy import DateTime
 from sqlalchemy import Integer
 from sqlalchemy import LargeBinary
 from sqlalchemy import Boolean
-from sqlalchemy import func
 
 from sqlalchemy.types import Text
 
@@ -29,7 +29,7 @@ envelope = Table(
     Column('state', Enum(*ENVELOPE_STATES, name='envelope_state'),
            nullable=False),
     Column('posted_date', DateTime, nullable=False,
-           default=func.localtimestamp),
+           default=datetime.datetime.utcnow),
     Column('done_date', DateTime),
 )
 
@@ -68,7 +68,8 @@ event_error = Table(
     Column('role_id', UUID, ForeignKey('role.id', ondelete='SET NULL')),
     Column('items', Text),
     Column('message', Text),
-    Column('error_date', DateTime, nullable=False, default=func.localtimestamp),
+    Column('error_date', DateTime, nullable=False,
+           default=datetime.datetime.utcnow),
     Column('state', Enum(*EVENT_ERROR_STATES, name='event_error_state'),
            nullable=False, default='unprocessed'),
 )
@@ -87,7 +88,7 @@ event_error_tracking = Table(
         ForeignKey('user.user_id', ondelete='RESTRICT'),
         nullable=False,
     ),
-    Column('date', DateTime, nullable=False, default=func.localtimestamp),
+    Column('date', DateTime, nullable=False, default=datetime.datetime.utcnow),
     Column('comment', Text, nullable=False),
     Column('new_state', Enum(*EVENT_ERROR_STATES, name='event_error_state')),
 )
