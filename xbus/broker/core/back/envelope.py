@@ -2,6 +2,7 @@
 __author__ = 'jgavrel'
 
 import asyncio
+from sqlalchemy import func
 from xbus.broker.model.logging import envelope
 from xbus.broker.model.logging import event as event_model
 from xbus.broker.model.logging import event_error
@@ -290,7 +291,7 @@ class Envelope(object):
         except asyncio.TimeoutError:
             success, reply = False, [([], "Worker timed out.")]
 
-        if reply:
+        if success:
             for child_id in node.children:
                 child = event[child_id]
                 if child.is_consumer:
@@ -378,14 +379,19 @@ class Envelope(object):
 
         try:
             res = yield from asyncio.gather(*tasks, loop=self.loop)
+            errors = [
+                reply for success, replies in res if not success
+                for reply in replies
+            ]
+        except (TypeError, ValueError):
+            errors = [([], "Malformed reply to end_envelope.")]
         except asyncio.TimeoutError:
-            res = [False]
-            errors = [([], "Connection with the consumer timed out.")]
-
-        if all(res):
+            errors = [([], "Consumer timed out.")]
+        if not errors:
             node.next_trigger()
             return True
         else:
+            self.log_event_errors(errors, event, node)
             asyncio.async(self.stop_envelope(), loop=self.loop)
 
     @asyncio.coroutine
@@ -433,6 +439,8 @@ class Envelope(object):
             ]
         except (TypeError, ValueError):
             errors = [(indices, "Malformed reply data.")]
+        except asyncio.TimeoutError:
+            errors = [([], "Consumer timed out.")]
 
         if not errors:
             node.next_trigger()
@@ -468,14 +476,25 @@ class Envelope(object):
             corobj = self.watch_call(call, self.end_event_timeout)
             tasks.append(asyncio.async(corobj, loop=self.loop))
 
-        res = yield from asyncio.gather(*tasks, loop=self.loop)
-        if all(res):
+        try:
+            res = yield from asyncio.gather(*tasks, loop=self.loop)
+            errors = [
+                reply for success, replies in res if not success
+                for reply in replies
+            ]
+        except (TypeError, ValueError):
+            errors = [([], "Malformed reply to end_envelope.")]
+        except asyncio.TimeoutError:
+            errors = [([], "Consumer timed out.")]
+
+        if not errors:
             node.done = True
             if self.trigger._callbacks:
                 self.trigger.set_result(True)
                 self.trigger = asyncio.Future(loop=self.loop)
             return True
         else:
+            self.log_event_errors(errors, event, node)
             asyncio.async(self.stop_envelope(), loop=self.loop)
             return False
 
@@ -498,10 +517,21 @@ class Envelope(object):
             corobj = self.watch_call(call, self.end_envelope_timeout)
             tasks.append(asyncio.async(corobj, loop=self.loop))
 
-        res = yield from asyncio.gather(*tasks, loop=self.loop)
-        if all(res):
+        try:
+            res = yield from asyncio.gather(*tasks, loop=self.loop)
+            errors = [
+                reply for success, replies in res if not success
+                for reply in replies
+            ]
+        except (TypeError, ValueError):
+            errors = [([], "Malformed reply to end_envelope.")]
+        except asyncio.TimeoutError:
+            errors = [([], "Consumer timed out.")]
+
+        if not errors:
             return True
         else:
+            self.log_event_errors(errors, None, node)
             asyncio.async(self.stop_envelope(), loop=self.loop)
             return False
 
@@ -528,7 +558,7 @@ class Envelope(object):
         with (yield from self.dbengine) as conn:
             update = envelope.update()
             update = update.where(envelope.c.id == self.envelope_id)
-            update = update.values(state='done')
+            update = update.values(state='done', done_date=func.localtimestamp)
             yield from conn.execute(update)
 
     @asyncio.coroutine
