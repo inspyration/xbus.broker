@@ -56,6 +56,10 @@ event = Table(
     Column('sent_items', Integer),
     Column('state', Enum(*TRACKING_STATES, name='tracking_state'),
            nullable=False, default='unprocessed'),
+    Column(
+        'responsible_id', UUID,
+        ForeignKey('user.user_id', ondelete='RESTRICT'),
+    ),
 )
 
 # Errors launched when processing an event (as part of an envelope).
@@ -74,6 +78,10 @@ event_error = Table(
            default=datetime.datetime.utcnow),
     Column('state', Enum(*TRACKING_STATES, name='tracking_state'),
            nullable=False, default='unprocessed'),
+    Column(
+        'responsible_id', UUID,
+        ForeignKey('user.user_id', ondelete='RESTRICT'),
+    ),
 )
 
 # Track comments and state changes of event errors.
