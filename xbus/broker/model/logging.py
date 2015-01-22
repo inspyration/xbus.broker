@@ -21,6 +21,14 @@ from xbus.broker.model.types import UUID
 
 ENVELOPE_STATES = ['emit', 'canc', 'wait', 'exec', 'done', 'stop', 'fail']
 
+TRACKING_STATES = [
+    'unprocessed',
+    'processing',
+    'on_hold',
+    'corrected',
+    'won_t_fix',
+]
+
 envelope = Table(
     'envelope', metadata,
     Column('id', UUID, default=uuid4, primary_key=True),
@@ -46,15 +54,9 @@ event = Table(
     Column('done_date', DateTime),
     Column('estimated_items', Integer),
     Column('sent_items', Integer),
+    Column('state', Enum(*TRACKING_STATES, name='tracking_state'),
+           nullable=False, default='unprocessed'),
 )
-
-EVENT_ERROR_STATES = [
-    'unprocessed',
-    'processing',
-    'on_hold',
-    'corrected',
-    'won_t_fix',
-]
 
 # Errors launched when processing an event (as part of an envelope).
 event_error = Table(
@@ -70,7 +72,7 @@ event_error = Table(
     Column('message', Text),
     Column('error_date', DateTime, nullable=False,
            default=datetime.datetime.utcnow),
-    Column('state', Enum(*EVENT_ERROR_STATES, name='event_error_state'),
+    Column('state', Enum(*TRACKING_STATES, name='tracking_state'),
            nullable=False, default='unprocessed'),
 )
 
@@ -90,7 +92,26 @@ event_error_tracking = Table(
     ),
     Column('date', DateTime, nullable=False, default=datetime.datetime.utcnow),
     Column('comment', Text, nullable=False),
-    Column('new_state', Enum(*EVENT_ERROR_STATES, name='event_error_state')),
+    Column('new_state', Enum(*TRACKING_STATES, name='tracking_state')),
+)
+
+# Track comments and state changes of events.
+event_tracking = Table(
+    'event_tracking', metadata,
+    Column('id', UUID, default=uuid4, primary_key=True),
+    Column(
+        'event_id', UUID,
+        ForeignKey('event.id', ondelete='CASCADE'),
+        index=True, nullable=False,
+    ),
+    Column(
+        'user_id', UUID,
+        ForeignKey('user.user_id', ondelete='RESTRICT'),
+        nullable=False,
+    ),
+    Column('date', DateTime, nullable=False, default=datetime.datetime.utcnow),
+    Column('comment', Text, nullable=False),
+    Column('new_state', Enum(*TRACKING_STATES, name='tracking_state')),
 )
 
 item = Table(
