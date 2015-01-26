@@ -26,3 +26,5 @@ devdata.db
 .settings
 *.orig
 *.egg
+.coverage
+htmlcov
