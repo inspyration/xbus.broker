@@ -41,6 +41,7 @@ class XbusBrokerBack(XbusBrokerBase):
         self.frontsocket = frontsocket
         self.socket = socket
 
+        # {service ID: set(role ID)}
         self.consumers = defaultdict(set)
         self.active_roles = defaultdict(set)
         self.node_registry = {}
