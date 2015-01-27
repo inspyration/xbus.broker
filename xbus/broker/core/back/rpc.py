@@ -440,6 +440,21 @@ class XbusBrokerBack(XbusBrokerBase):
         del self.envelopes[envelope]
         return envelope_id
 
+    @rpc.method
+    @asyncio.coroutine
+    def get_consumers(self) -> list:
+        """Retrieve the list of consumers that have registered into the Xbus
+        back-end.
+
+        :return: List of role IDs.
+        """
+
+        # Convert the "self.consumers" dict to a list zmq can grok.
+        consumers = []
+        for role_ids in self.consumers.values():
+            consumers.extend(role_ids)
+        return consumers
+
     @asyncio.coroutine
     def get_event_tree(self, type_id: str) -> list:
         """Internal helper method used to find all nodes and the links

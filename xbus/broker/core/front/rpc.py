@@ -5,6 +5,7 @@ import asyncio
 import json
 import aiozmq
 from aiozmq import rpc
+from collections import defaultdict
 
 from sqlalchemy.sql import select
 from sqlalchemy.sql import and_
@@ -469,6 +470,22 @@ class XbusBrokerFront(XbusBrokerBase):
 
         # Do nothing else for now.
         return True
+
+    @rpc.method
+    @asyncio.coroutine
+    def get_consumers(self, token: str) -> list:
+        """Retrieve the list of consumers that have registered into the Xbus
+        back-end.
+
+        :param token: The emitter's connection token, obtained from the
+        :meth:`.XbusBrokerFront.login` method which is exposed on the same 0mq
+        socket.
+
+        :return: List of role IDs.
+        """
+
+        consumers = yield from self.backend.call.get_consumers()
+        return consumers
 
     @asyncio.coroutine
     def backend_start_envelope(self, envelope_id: str) -> bool:
