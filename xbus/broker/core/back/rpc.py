@@ -292,14 +292,14 @@ class XbusBrokerBack(XbusBrokerBase):
             node_id, service_id, is_start, child_ids = row.as_tuple()
             service_roles = self.active_roles[service_id]
 
-            if child_ids:     # Workers
+            if child_ids:  # Workers
                 if not service_roles:
                     return False
                 role_id = service_roles.pop()
                 client = self.node_registry[role_id]
                 event.new_worker(node_id, role_id, client, child_ids, is_start)
 
-            else:             # Consumers
+            else:  # Consumers
                 role_ids = list(service_roles)
                 clients = [self.node_registry[r] for r in service_roles]
                 event.new_consumer(node_id, role_ids, clients, is_start)
