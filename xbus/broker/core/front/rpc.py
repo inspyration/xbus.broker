@@ -5,7 +5,6 @@ import asyncio
 import json
 import aiozmq
 from aiozmq import rpc
-from collections import defaultdict
 
 from sqlalchemy.sql import select
 from sqlalchemy.sql import and_
