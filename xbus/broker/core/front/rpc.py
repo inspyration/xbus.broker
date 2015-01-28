@@ -474,13 +474,13 @@ class XbusBrokerFront(XbusBrokerBase):
     @asyncio.coroutine
     def get_consumers(self, token: str) -> list:
         """Retrieve the list of consumers that have registered into the Xbus
-        back-end.
+        back-end, including their metadata and the features they support.
 
         :param token: The emitter's connection token, obtained from the
         :meth:`.XbusBrokerFront.login` method which is exposed on the same 0mq
         socket.
 
-        :return: List of role IDs.
+        :return: List of 2-element tuples (metadata dict, feature dict).
         """
 
         # Check the token.

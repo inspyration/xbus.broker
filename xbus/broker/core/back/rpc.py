@@ -15,6 +15,7 @@ from xbus.broker.model.helpers import get_event_tree
 from xbus.broker.model.helpers import get_consumer_roles
 
 from xbus.broker.core.base import XbusBrokerBase
+from xbus.broker.core.back.client_node import ClientNode
 from xbus.broker.core.back.envelope import Envelope
 
 
@@ -44,7 +45,10 @@ class XbusBrokerBack(XbusBrokerBase):
         # {service ID: set(role ID)}
         self.consumers = defaultdict(set)
         self.active_roles = defaultdict(set)
-        self.node_registry = {}
+
+        # Registered client nodes, with their metadata and a connection.
+        # {role ID: ClientNode instance}
+        self.client_nodes = {}
 
         self.envelopes = {}
 
@@ -126,7 +130,7 @@ class XbusBrokerBack(XbusBrokerBase):
             if role_id in service_roles:
                 service_roles.remove(role_id)
             try:
-                del self.node_registry[role_id]
+                self.client_nodes.pop(role_id)
             except KeyError:
                 pass
             res = yield from self.destroy_key(token)
@@ -168,17 +172,10 @@ class XbusBrokerBack(XbusBrokerBase):
             if role_id is None:
                 return False
 
-        # Connect to the specified node socket.
-        node_client = yield from aiozmq.rpc.connect_rpc(
-            connect=uri
-        )
-        # Keep the node connection around so we can call it when needed.
-        self.node_registry[role_id] = node_client
-
-        # Ask the node for its metadata; if it can't provide it, back out.
-        metadata = yield from node_client.call.get_metadata()
-
-        # TODO Store the metadata...
+        # Fill client node information.
+        client_node = ClientNode()
+        yield from client_node.connect(uri)
+        self.client_nodes[role_id] = client_node
 
         # Mark the node as active.
         res = yield from self.ready(token)
@@ -208,10 +205,10 @@ class XbusBrokerBack(XbusBrokerBase):
             service_id = token_data.get('service_id', None)
             if role_id is None or service_id is None:
                 return False
+            if role_id not in self.client_nodes:
+                return False
 
             # Add the role to the list of active roles of the service.
-            if role_id not in self.node_registry:
-                return False
             service_roles = self.active_roles[service_id]
             service_roles.add(role_id)
             return True
@@ -307,12 +304,12 @@ class XbusBrokerBack(XbusBrokerBase):
                 if not service_roles:
                     return False
                 role_id = service_roles.pop()
-                client = self.node_registry[role_id]
+                client = self.client_nodes[role_id].socket
                 event.new_worker(node_id, role_id, client, child_ids, is_start)
 
             else:  # Consumers
                 role_ids = list(service_roles)
-                clients = [self.node_registry[r] for r in service_roles]
+                clients = [self.client_nodes[r].socket for r in service_roles]
                 event.new_consumer(node_id, role_ids, clients, is_start)
                 consumers = self.consumers[service_id]
                 inactive_consumers = consumers - service_roles
@@ -455,16 +452,25 @@ class XbusBrokerBack(XbusBrokerBase):
     @asyncio.coroutine
     def get_consumers(self) -> list:
         """Retrieve the list of consumers that have registered into the Xbus
-        back-end.
+        back-end, including their metadata and the features they support.
 
-        :return: List of role IDs.
+        :return: List of 2-element tuples (metadata dict, feature dict).
         """
 
-        # Convert the "self.consumers" dict to a list zmq can grok.
-        consumers = []
+        ret = []
+
+        # Gather IDs of consumer roles.
+        consumer_role_ids = []
         for role_ids in self.consumers.values():
-            consumers.extend(role_ids)
-        return consumers
+            consumer_role_ids.extend(role_ids)
+
+        # Add information about the client nodes.
+        for role_id in consumer_role_ids:
+            client_node = self.client_nodes.get(role_id)
+            if client_node:
+                ret.append((client_node.metadata, client_node.features))
+
+        return ret
 
     @asyncio.coroutine
     def get_event_tree(self, type_id: str) -> list:
