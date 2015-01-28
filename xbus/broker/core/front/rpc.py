@@ -483,6 +483,10 @@ class XbusBrokerFront(XbusBrokerBase):
         :return: List of role IDs.
         """
 
+        # Check the token.
+        if (yield from self.get_key_info(token)) is None:
+            return []
+
         consumers = yield from self.backend.call.get_consumers()
         return consumers
 
