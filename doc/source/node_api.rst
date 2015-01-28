@@ -36,7 +36,7 @@ Required return dictionary keys:
 - api_version (float): Version of the Xbus node API.
 - host (string): Host name of the server hosting the node.
 - start_date (string): ISO 8601 date-time of When the node was started.
-- locale_time (string): ISO 8601 time on the node server.
+- local_time (string): ISO 8601 time on the node server.
 
 
 ping
