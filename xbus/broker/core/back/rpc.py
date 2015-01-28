@@ -175,6 +175,11 @@ class XbusBrokerBack(XbusBrokerBase):
         # Keep the node connection around so we can call it when needed.
         self.node_registry[role_id] = node_client
 
+        # Ask the node for its metadata; if it can't provide it, back out.
+        metadata = yield from node_client.call.get_metadata()
+
+        # TODO Store the metadata...
+
         # Mark the node as active.
         res = yield from self.ready(token)
         return res
