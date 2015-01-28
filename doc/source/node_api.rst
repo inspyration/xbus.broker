@@ -74,15 +74,15 @@ Returns: 2-element tuple:
 start_event
 -----------
 
-Optional.
+Required.
 
 Called when a new event is available.
 
 Parameters:
 
-- envelope_id: String.
-- event_id: String.
-- type_name: String.
+- envelope_id: [TODO] String.
+- event_id: [TODO] String.
+- type_name: [TODO] String.
 
 Returns: [TODO] tuple.
 
@@ -90,16 +90,16 @@ Returns: [TODO] tuple.
 send_item
 ---------
 
-Optional.
+Required.
 
 Called to send the node an item.
 
 Parameters:
 
-- envelope_id: String.
-- event_id: String.
-- indices: List.
-- data: Byte array.
+- envelope_id: [TODO] String.
+- event_id: [TODO] String.
+- indices: [TODO] List.
+- data: [TODO] Byte array.
 
 Returns: [TODO] tuple.
 
@@ -107,14 +107,14 @@ Returns: [TODO] tuple.
 end_event
 ---------
 
-Optional.
+Required.
 
 Called at the end of an event.
 
 Parameters:
 
-- envelope_id: String.
-- event_id: String.
+- envelope_id: [TODO] String.
+- event_id: [TODO] String.
 
 Returns: [TODO] tuple.
 
@@ -122,13 +122,13 @@ Returns: [TODO] tuple.
 end_envelope
 ------------
 
-Optional.
+Required.
 
 Called once an envelope (and its individual events) has been sent.
 
 Parameters:
 
-- envelope_id: String.
+- envelope_id: [TODO] String.
 
 Returns: [TODO] tuple.
 
@@ -136,12 +136,12 @@ Returns: [TODO] tuple.
 stop_envelope
 -------------
 
-Optional.
+Required.
 
 Called to signal an early envelope exit.
 
 Parameters:
 
-- envelope_id: String.
+- envelope_id: [TODO] String.
 
 Returns: [TODO] boolean.
