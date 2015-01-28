@@ -135,69 +135,76 @@ class XbusBrokerBack(XbusBrokerBase):
     @rpc.method
     @asyncio.coroutine
     def register_node(self, token: str, uri: str) -> bool:
-        """Register a worker / consumer on the broker. This worker will be
+        """Register a node (worker / consumer) on the broker. This node will be
         known by the broker and called when some work is available.
+
+        The node must implement the API described in the "Xbus node API"
+        section of the documentation.
 
         :param token:
          the token your worker previously obtained by using the
          :meth:`XbusBrokerBack.login` method
 
         :param uri:
-         a unicode object representing the socket address on which your
-         worker is available. The worker is effectivly a server and must
-         answer on the designated socket when we need it.
+         String representing the socket address on which the node is available.
+         The node is effectivly a server and must answer on the designated
+         socket when the broker calls elements of the node API.
 
         :return:
-         True if the registration went well and the broker now knows the worker
+         True if the registration went well and the broker now knows the node.
          False if something went wrong during registration and the broker
-         does not recognize the worker as being part of its active graph.
+         does not recognize the node as being part of its active graph.
         """
+
+        # Check the token.
         token_json = yield from self.get_key_info(token)
         token_data = json.loads(token_json)
-
         if token_data is None:
-            # token was invalid, return False to inform our potential worker of
-            # the issue
+            # Invalid token.
             return False
         else:
+            # Find the role the token was registered for.
             role_id = token_data.get('id', None)
             if role_id is None:
                 return False
 
-        # then connect to our worker's socket
+        # Connect to the specified node socket.
         node_client = yield from aiozmq.rpc.connect_rpc(
             connect=uri
         )
-        # keep a reference to our connected worker to be able to call him
-        # later-on when we have work for him to do
+        # Keep the node connection around so we can call it when needed.
         self.node_registry[role_id] = node_client
+
+        # Mark the node as active.
         res = yield from self.ready(token)
         return res
 
     @rpc.method
     @asyncio.coroutine
     def ready(self, token: str) -> bool:
-        """Register a worker / consumer on the broker. This worker will be
-        called when some work is available.
+        """Signal that a node (worker / consumer is "ready".
 
         :param token:
          the token your worker previously obtained by using the
          :meth:`XbusBrokerBack.login` method
         """
 
+        # TODO Improve the above comment to explain what is "ready".
+
+        # Check the token.
         token_json = yield from self.get_key_info(token)
         token_data = json.loads(token_json)
-
         if token_data is None:
-            # token was invalid, return False to inform our potential worker of
-            # the issue
+            # Invalid token.
             return False
         else:
+            # Find the role and service the token was registered for.
             role_id = token_data.get('id', None)
             service_id = token_data.get('service_id', None)
             if role_id is None or service_id is None:
                 return False
 
+            # Add the role to the list of active roles of the service.
             if role_id not in self.node_registry:
                 return False
             service_roles = self.active_roles[service_id]
