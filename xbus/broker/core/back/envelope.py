@@ -2,6 +2,8 @@
 __author__ = 'jgavrel'
 
 import asyncio
+from datetime import datetime
+from uuid import uuid4
 from sqlalchemy import func
 from xbus.broker.model.logging import envelope
 from xbus.broker.model.logging import event as event_model
@@ -34,8 +36,8 @@ class Envelope(object):
         self.trigger = asyncio.Future(loop=loop)
         self.start_event_timeout = 60
         self.send_item_timeout = 60
-        self.end_event_timeout = 60
-        self.end_envelope_timeout = 60
+        self.end_event_timeout = 3600
+        self.end_envelope_timeout = 3600
         self.stop_envelope_timeout = 60
 
     def new_event(self, event_id, type_name, type_id):
@@ -198,7 +200,7 @@ class Envelope(object):
             return True
 
         else:
-            self.log_event_errors(reply, event, node)
+            yield from self.log_event_errors(reply, event, node)
             asyncio.async(self.stop_envelope(), loop=self.loop)
             return False
 
@@ -258,7 +260,7 @@ class Envelope(object):
             node.next_trigger()
             return True
         else:
-            self.log_event_errors(reply, event, node)
+            yield from self.log_event_errors(reply, event, node)
             asyncio.async(self.stop_envelope(), loop=self.loop)
             return False
 
@@ -302,7 +304,7 @@ class Envelope(object):
                     coro(child, event, node.sent), loop=self.loop
                 )
         else:
-            self.log_event_errors(reply, event, node)
+            yield from self.log_event_errors(reply, event, node)
             asyncio.async(self.stop_envelope(), loop=self.loop)
             return False
 
@@ -332,7 +334,7 @@ class Envelope(object):
         if success:
             return True
         else:
-            self.log_event_errors(reply, None, node)
+            yield from self.log_event_errors(reply, None, node)
             return False
 
     @asyncio.coroutine
@@ -391,7 +393,7 @@ class Envelope(object):
             node.next_trigger()
             return True
         else:
-            self.log_event_errors(errors, event, node)
+            yield from self.log_event_errors(errors, event, node)
             asyncio.async(self.stop_envelope(), loop=self.loop)
 
     @asyncio.coroutine
@@ -446,7 +448,7 @@ class Envelope(object):
             node.next_trigger()
             return True
         else:
-            self.log_event_errors(errors, event, node)
+            yield from self.log_event_errors(errors, event, node)
             asyncio.async(self.stop_envelope(), loop=self.loop)
             return False
 
@@ -494,7 +496,7 @@ class Envelope(object):
                 self.trigger = asyncio.Future(loop=self.loop)
             return True
         else:
-            self.log_event_errors(errors, event, node)
+            yield from self.log_event_errors(errors, event, node)
             asyncio.async(self.stop_envelope(), loop=self.loop)
             return False
 
@@ -531,7 +533,7 @@ class Envelope(object):
         if not errors:
             return True
         else:
-            self.log_event_errors(errors, None, node)
+            yield from self.log_event_errors(errors, None, node)
             asyncio.async(self.stop_envelope(), loop=self.loop)
             return False
 
@@ -577,14 +579,15 @@ class Envelope(object):
         envelope_id = self.envelope_id
         event_id = event.event_id if event else None
         node_id = node.node_id if node else None
+        insert = event_error.insert().values([
+            dict(
+                id=uuid4(), envelope_id=envelope_id, event_id=event_id,
+                node_id=node_id, items=items, message=message,
+                error_date=datetime.utcnow(), state='unprocessed'
+            ) for items, message in self.error_format(errors)
+        ])
         with (yield from self.dbengine) as conn:
-            insert = event_error.insert()
-            yield from insert.execute(
-                dict(
-                    envelope_id=envelope_id, event_id=event_id,
-                    node_id=node_id, items=items, message=message
-                ) for items, message in self.error_format(errors)
-            )
+            yield from conn.execute(insert)
 
     @staticmethod
     def error_format(errors):
@@ -596,7 +599,7 @@ class Envelope(object):
         for error in errors_iter:
             try:
                 indices, message = error
-                items = ','.join(indices)
+                items = ','.join(str(i) for i in indices)
                 if isinstance(message, str):
                     yield (items, message)
                 else:

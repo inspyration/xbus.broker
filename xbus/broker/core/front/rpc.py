@@ -861,9 +861,10 @@ class XbusBrokerFront(XbusBrokerBase):
         """
         with (yield from self.dbengine) as conn:
             insert = event.insert()
-            insert = insert.values(id=event_id, envelope_id=envelope_id,
-                                   emitter_id=emitter_id, type_id=type_id,
-                                   estimated_items=estimate)
+            insert = insert.values(
+                id=event_id, envelope_id=envelope_id, emitter_id=emitter_id,
+                type_id=type_id, estimated_items=estimate, state='unprocessed'
+            )
             yield from conn.execute(insert)
 
     @asyncio.coroutine

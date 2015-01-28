@@ -218,7 +218,6 @@ class XbusBrokerBack(XbusBrokerBase):
         :return:
          the envelop id you just started
         """
-        # TODO: replace new dict with a properly defined Envelope object?
         self.envelopes[envelope_id] = Envelope(
             envelope_id, self.dbengine, self.loop
         )
