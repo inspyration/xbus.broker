@@ -39,6 +39,12 @@ Required return dictionary keys:
 - local_time (string): ISO 8601 time on the node server.
 
 
+Optional return dictionary keys:
+
+- locale (string): Locale code, in a format specified by BCP 47
+  <http://tools.ietf.org/html/bcp47>.
+
+
 ping
 ----
 
