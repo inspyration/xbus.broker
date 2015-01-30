@@ -20,6 +20,10 @@ event_type = Table(
     Column('id', UUID, default=uuid4, primary_key=True),
     Column('name', Unicode(length=64), index=True, unique=True),
     Column('description', Text),
+
+    # See the "immediate reply" part of the Xbus documentation for details on
+    # this field.
+    Column('immediate_reply', Boolean),
 )
 
 event_node = Table(
