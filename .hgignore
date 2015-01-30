@@ -1,5 +1,6 @@
 syntax: glob
 Thumbs.db
+.tox/*
 **/*.orig
 **/*.pyc
 **/*.pyo
