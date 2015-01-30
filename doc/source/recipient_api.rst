@@ -1,8 +1,8 @@
-Xbus node API
-=============
+Xbus recipient API
+==================
 
-Description of the API Xbus nodes must implement in order to register into an
-Xbus network.
+Description of the API Xbus recipients must implement in order to register into
+an Xbus network.
 
 Version of this document: 0.1.
 
@@ -23,7 +23,7 @@ get_metadata
 
 Required.
 
-Called to ask for information about the node.
+Called to ask for information about the recipient.
 
 Parameters: None.
 
@@ -31,12 +31,12 @@ Returns: A dictionary.
 
 Required return dictionary keys:
 
-- name (string): Name of the node.
-- version (float): Version of the node.
-- api_version (float): Version of the Xbus node API.
-- host (string): Host name of the server hosting the node.
-- start_date (string): ISO 8601 date-time of When the node was started.
-- local_time (string): ISO 8601 time on the node server.
+- name (string): Name of the recipient.
+- version (float): Version of the recipient.
+- api_version (float): Version of the Xbus recipient API.
+- host (string): Host name of the server hosting the recipient.
+- start_date (string): ISO 8601 date-time of When the recipient was started.
+- local_time (string): ISO 8601 time on the recipient server.
 
 
 Optional return dictionary keys:
@@ -50,7 +50,7 @@ ping
 
 Required.
 
-Called when Xbus wants to check whether the node is up.
+Called when Xbus wants to check whether the recipient is up.
 
 Parameters:
 
@@ -64,8 +64,8 @@ has_clearing
 
 Required.
 
-Called to determine whether the node supports the "data clearing" feature; and
-if it does, to get more information about that process.
+Called to determine whether the recipient supports the "data clearing" feature;
+and if it does, to get more information about that process.
 
 Parameters: None.
 
@@ -98,7 +98,7 @@ send_item
 
 Required.
 
-Called to send the node an item.
+Called to send the recipient an item.
 
 Parameters:
 

@@ -1,4 +1,4 @@
-"""Features Xbus client nodes (workers / consumers) can support.
+"""Features Xbus recipients (workers / consumers) can support.
 """
 
-NODE_FEATURES = ('clearing',)
+RECIPIENT_FEATURES = ('clearing',)

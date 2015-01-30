@@ -15,8 +15,8 @@ from xbus.broker.model.helpers import get_event_tree
 from xbus.broker.model.helpers import get_consumer_roles
 
 from xbus.broker.core.base import XbusBrokerBase
-from xbus.broker.core.back.client_node import ClientNode
 from xbus.broker.core.back.envelope import Envelope
+from xbus.broker.core.back.recipient import Recipient
 
 
 class BrokerBackError(Exception):
@@ -46,9 +46,9 @@ class XbusBrokerBack(XbusBrokerBase):
         self.consumers = defaultdict(set)
         self.active_roles = defaultdict(set)
 
-        # Registered client nodes, with their metadata and a connection.
-        # {role ID: ClientNode instance}
-        self.client_nodes = {}
+        # Registered recipients, with their metadata and a connection.
+        # {role ID: Recipient instance}
+        self.recipients = {}
 
         self.envelopes = {}
 
@@ -130,7 +130,7 @@ class XbusBrokerBack(XbusBrokerBase):
             if role_id in service_roles:
                 service_roles.remove(role_id)
             try:
-                self.client_nodes.pop(role_id)
+                self.recipients.pop(role_id)
             except KeyError:
                 pass
             res = yield from self.destroy_key(token)
@@ -172,10 +172,10 @@ class XbusBrokerBack(XbusBrokerBase):
             if role_id is None:
                 return False
 
-        # Fill client node information.
-        client_node = ClientNode()
-        yield from client_node.connect(uri)
-        self.client_nodes[role_id] = client_node
+        # Fill recipient information.
+        recipient = Recipient()
+        yield from recipient.connect(uri)
+        self.recipients[role_id] = recipient
 
         # Mark the node as active.
         res = yield from self.ready(token)
@@ -205,7 +205,7 @@ class XbusBrokerBack(XbusBrokerBase):
             service_id = token_data.get('service_id', None)
             if role_id is None or service_id is None:
                 return False
-            if role_id not in self.client_nodes:
+            if role_id not in self.recipients:
                 return False
 
             # Add the role to the list of active roles of the service.
@@ -304,12 +304,12 @@ class XbusBrokerBack(XbusBrokerBase):
                 if not service_roles:
                     return False
                 role_id = service_roles.pop()
-                client = self.client_nodes[role_id].socket
+                client = self.recipients[role_id].socket
                 event.new_worker(node_id, role_id, client, child_ids, is_start)
 
             else:  # Consumers
                 role_ids = list(service_roles)
-                clients = [self.client_nodes[r].socket for r in service_roles]
+                clients = [self.recipients[r].socket for r in service_roles]
                 event.new_consumer(node_id, role_ids, clients, is_start)
                 consumers = self.consumers[service_id]
                 inactive_consumers = consumers - service_roles
@@ -464,11 +464,11 @@ class XbusBrokerBack(XbusBrokerBase):
         for role_ids in self.consumers.values():
             consumer_role_ids.extend(role_ids)
 
-        # Add information about the client nodes.
+        # Add information about the recipients.
         for role_id in consumer_role_ids:
-            client_node = self.client_nodes.get(role_id)
-            if client_node:
-                ret.append((client_node.metadata, client_node.features))
+            recipient = self.recipients.get(role_id)
+            if recipient:
+                ret.append((recipient.metadata, recipient.features))
 
         return ret
 

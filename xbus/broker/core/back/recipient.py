@@ -1,20 +1,20 @@
 import aiozmq
 
-from xbus.broker.core.features import NODE_FEATURES
+from xbus.broker.core.features import RECIPIENT_FEATURES
 
 
-class ClientNode(object):
-    """Information about an Xbus client node (a worker or a consumer):
+class Recipient(object):
+    """Information about an Xbus recipient (a worker or a consumer):
     - its metadata;
     - the features it supports;
     - a socket.
     """
 
     def connect(self, url):
-        """Initialize the client node information holder. Open a socket to the
-        specified url and use it to fetch metadata and supported features.
+        """Initialize the recipient information holder. Open a socket to the
+        specified URL and use it to fetch metadata and supported features.
 
-        :param url: URL to reach the client node.
+        :param url: URL to reach the recipient.
         """
 
         self.socket = yield from aiozmq.rpc.connect_rpc(connect=url)
@@ -22,12 +22,12 @@ class ClientNode(object):
         yield from self.update_features()
 
     def update_features(self):
-        """Refresh the list of features the client node supports.
+        """Refresh the list of features the recipient supports.
         :note: The socket must be open.
         """
 
         self.features = {}
-        for feature in NODE_FEATURES:
+        for feature in RECIPIENT_FEATURES:
             feature_data = yield from getattr(
                 self.socket.call, 'has_%s' % feature
             )()

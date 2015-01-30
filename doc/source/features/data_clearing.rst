@@ -1,10 +1,11 @@
 Data clearing Xbus feature
 ==========================
 
-This document describes the "data clearing" feature Xbus nodes may implement.
+This document describes the "data clearing" feature Xbus recipient nodes may
+implement.
 
-If they do, they must answer appropriately to the "has_clearing" API call (see
-the section of the Xbus documentation describing Xbus node API calls for
+If they do, they must appropriately answer the "has_clearing" API call (see the
+section of the Xbus documentation describing Xbus recipient API calls for
 details).
 
 
