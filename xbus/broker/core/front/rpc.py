@@ -687,7 +687,7 @@ class XbusBrokerFront(XbusBrokerBase):
          the UUID of the envelope
 
         :return:
-         True
+         True in case of success and False in case of error
         """
         try:
             envelope_info = self.envelopes[envelope_id]
@@ -695,8 +695,10 @@ class XbusBrokerFront(XbusBrokerBase):
             envelope_info['trigger'].set_result(False)
             for event_info in envelope_info['events'].values():
                 event_info['trigger'].set_result(False)
+
         except KeyError:
             return False
+
         return True
 
     @asyncio.coroutine
