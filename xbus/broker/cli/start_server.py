@@ -3,19 +3,21 @@ __author__ = 'faide'
 
 import asyncio
 from aiopg.sa import create_engine
+import signal
+import sys
+import logging
 
 from xbus.broker.cli import get_config
 from xbus.broker.core import get_frontserver
 from xbus.broker.core import get_backserver
 from xbus.broker.core import prepare_event_loop
-import signal
-import sys
 
 
 def signal_handler(_signal, frame):
-        print('')
-        print('received signal {} during frame {}'.format(_signal, frame))
-        print('User initiated shutdown by Ctrl+C')
+        logging.warning('received signal {} during frame {}'.format(
+            _signal,  frame)
+        )
+        logging.warning('User initiated shutdown by Ctrl+C')
         sys.exit(0)
 
 
@@ -72,4 +74,5 @@ def start_server() -> None:
     config = get_config()
     prepare_event_loop()
     loop = asyncio.get_event_loop()
+    logging.info("Starting server main loop")
     loop.run_until_complete(start_all(config, loop=loop))

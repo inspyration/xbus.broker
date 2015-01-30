@@ -39,5 +39,6 @@ def get_config():
         )
         sys.exit(1)
     logging.config.fileConfig(logging_configfile)
+    logging.info('Logging system initialized')
 
     return config
