@@ -188,8 +188,9 @@ class XbusBrokerFront(XbusBrokerBase):
         if envelope_closed:
             return ""
 
-        event_type_row = yield from self.find_event_type_by_name(event_name)
-        type_id = event_type_row[0]
+        type_id, immediate_reply = (
+            yield from self.find_event_type_by_name(event_name)
+        )
 
         access = yield from self.check_event_access(profile_id, type_id)
         if access is False:
@@ -198,6 +199,7 @@ class XbusBrokerFront(XbusBrokerBase):
         event_id = self.new_event()
         info = {
             'envelope_id': envelope_id,
+            'immediate_reply': immediate_reply,
             'type_id': type_id,
             'recv': 0,
             'sent': 0,
@@ -333,6 +335,7 @@ class XbusBrokerFront(XbusBrokerBase):
         try:
             event_info = envelope_events[event_id]
             event_closed = event_info.get('closed', False)
+            immediate_reply = event_info['immediate_reply']
         except KeyError:
             return False
 
@@ -342,8 +345,11 @@ class XbusBrokerFront(XbusBrokerBase):
 
         if envelope_forward:
             nb_items = event_info['recv']
+            # TODO Immediate replies: Propagate the result back to the emitter.
             asyncio.async(
-                self.backend_end_event(envelope_id, event_id, nb_items),
+                self.backend_end_event(
+                    envelope_id, event_id, nb_items, immediate_reply,
+                ),
                 loop=self.loop
             )
 
@@ -597,7 +603,8 @@ class XbusBrokerFront(XbusBrokerBase):
 
     @asyncio.coroutine
     def backend_end_event(
-            self, envelope_id: str, event_id: str, nb_items: int
+        self, envelope_id: str, event_id: str, nb_items: int,
+        immediate_reply: bool
     ):
         """Forward the end of the event to the backend.
 
@@ -610,6 +617,9 @@ class XbusBrokerFront(XbusBrokerBase):
         :param event_id:
          the number of items sent for this event.
 
+        :param immediate_reply: Whether an immediate reply is expected; refer
+        to the "Immediate reply" section of the Xbus documentation for details.
+
         :return:
          True if successful, False otherwise
         """
@@ -621,8 +631,9 @@ class XbusBrokerFront(XbusBrokerBase):
                 return False
 
         code, msg = yield from self.backend.call.end_event(
-            envelope_id, event_id, nb_items
+            envelope_id, event_id, nb_items, immediate_reply,
         )
+        # TODO Immediate replies: Propagate the result back to the emitter.
         if code == 0:
             if envelope_info['trigger']._callbacks:
                 envelope_info['trigger'].set_result(True)
@@ -733,12 +744,12 @@ class XbusBrokerFront(XbusBrokerBase):
         :param name:
          the name that identifies the event type you are searching for
 
-        :return:
-         a 1-tuple containing (id,), if nothing is found the tuple will
-         contain (None,)
+        :return: 2-element tuple, with:
+        - The internal ID of the event type object (or None if not found).
+        - Whether the event type has the "immediate reply" flag set.
         """
         with (yield from self.dbengine) as conn:
-            query = select((event_type.c.id,))
+            query = select((event_type.c.id, event_type.c.immediate_reply))
             query = query.where(event_type.c.name == name)
             query = query.limit(1)
 
@@ -747,7 +758,7 @@ class XbusBrokerFront(XbusBrokerBase):
             if row:
                 return row.as_tuple()
             else:
-                return None,
+                return None, None
 
     @asyncio.coroutine
     def check_event_access(self, profile_id: str, type_id: str) -> bool:

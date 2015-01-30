@@ -373,12 +373,16 @@ class XbusBrokerBack(XbusBrokerBase):
     @rpc.method
     @asyncio.coroutine
     def end_event(
-            self, envelope_id: str, event_id: str, nb_items: int
+        self, envelope_id: str, event_id: str, nb_items: int,
+        immediate_reply: bool
     ) -> tuple:
         """Finish an event normally.
 
         :param event_id:
          the event UUID you previously started
+
+        :param immediate_reply: Whether an immediate reply is expected; refer
+        to the "Immediate reply" section of the Xbus documentation for details.
 
         :return:
          to be defined
@@ -395,6 +399,7 @@ class XbusBrokerBack(XbusBrokerBase):
                 coro = envelope.consumer_end_event
             else:
                 coro = envelope.worker_end_event
+            # TODO Immediate replies: Propagate the result back to the emitter.
             asyncio.async(coro(node, event, nb_items), loop=self.loop)
 
         res = (0, event_id)

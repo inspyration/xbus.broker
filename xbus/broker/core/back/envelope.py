@@ -453,7 +453,9 @@ class Envelope(object):
             return False
 
     @asyncio.coroutine
-    def consumer_end_event(self, node, event, nb_items: int) -> bool:
+    def consumer_end_event(
+        self, node, event, nb_items: int, immediate_reply: bool
+    ) -> bool:
         """Forward the end of the event to the consumers.
 
         :param node:
@@ -465,9 +467,15 @@ class Envelope(object):
         :param nb_items:
          the total number of items sent by the consumer's parent
 
+        :param immediate_reply: Whether an immediate reply is expected; refer
+        to the "Immediate reply" section of the Xbus documentation for details.
+
         :return:
          True if successful, False otherwise
         """
+
+        # TODO Immediate replies: Propagate the result back to the emitter.
+
         trigger_res = yield from node.wait_trigger(nb_items)
         if trigger_res is False or self.stopped:
             return False
