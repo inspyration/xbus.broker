@@ -133,7 +133,9 @@ class ConsumerNode(Node):
         :param loop:
          the event loop used by the backend
         """
-        super(ConsumerNode, self).__init__(envelope_id, event_id, node_id, loop)
+        super(ConsumerNode, self).__init__(
+            envelope_id, event_id, node_id, loop
+        )
         self.role_ids = role_ids
         self.clients = clients
         self.done = False

@@ -33,7 +33,8 @@ class XbusBrokerFront(XbusBrokerBase):
     This is important in order to protect yourself. Calling logout will
     invalidate the token and make sure no one can reuse it ever.
 
-    Internally the front server will wait for a backend to come register itself.
+    Internally the front server will wait for a backend to come register
+    itself.
     As long as the backend is not ready the front will just store the
     envelopes, events and data and acknowledge them to the clients.
     The corresponding envelopes will be marked as waiting as long as no
@@ -938,7 +939,9 @@ class XbusBrokerFront2Back(rpc.AttrHandler):
         else:
             # set the backend client on the broker
             self.broker.backend = True
-            self.broker.backend = yield from aiozmq.rpc.connect_rpc(connect=uri)
+            self.broker.backend = yield from aiozmq.rpc.connect_rpc(
+                connect=uri
+            )
             return True
 
 

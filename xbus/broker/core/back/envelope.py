@@ -52,7 +52,13 @@ class Envelope(object):
         :param type_name:
          the name of the type of the started event
         """
-        event = Event(self.envelope_id, event_id, type_name, type_id, self.loop)
+        event = Event(
+            self.envelope_id,
+            event_id,
+            type_name,
+            type_id,
+            self.loop
+        )
         self.events[event_id] = event
         return event
 

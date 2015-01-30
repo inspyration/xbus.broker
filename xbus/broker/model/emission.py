@@ -45,7 +45,13 @@ emission_profile = Table(
 emitter_profile = Table(
     'emitter_profile', metadata,
     Column('id', UUID, default=uuid4, primary_key=True),
-    Column('name', Unicode(length=64), index=True, nullable=False, unique=True),
+    Column(
+        'name',
+        Unicode(length=64),
+        index=True,
+        nullable=False,
+        unique=True
+    ),
     Column("display_name", Unicode(255)),
     Column('description', Text),
 )
