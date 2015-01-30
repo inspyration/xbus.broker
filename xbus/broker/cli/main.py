@@ -11,7 +11,7 @@ import logging.config
 logger = logging.getLogger(__name__)
 
 
-def get_config():
+def get_config():  # pragma: nocover
     """Create a Config object from config file gave as an argument
     and instantiate the MiniConnector passing the config
     """

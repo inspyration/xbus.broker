@@ -20,7 +20,7 @@ from xbus.broker.model.event import event_node
 from xbus.broker.model.event import event_node_rel
 
 
-def setup_xbusdemo(engine):
+def setup_xbusdemo(engine):  # pragma: nocover
     emitter_profile_id = engine.execute(
         emitter_profile.insert().returning(emitter_profile.c.id).values(
             name='test_profile'
@@ -110,7 +110,7 @@ def setup_xbusdemo(engine):
     )
 
 
-def setup_usergroupperms(engine):
+def setup_usergroupperms(engine):  # pragma: nocover
     """default manager setup...
     """
     passw = gen_password(u'managepass')
@@ -181,7 +181,7 @@ def setup_usergroupperms(engine):
     )
 
 
-def setup_app(config):
+def setup_app(config):  # pragma: nocover
     """Place any commands to setup txMTA here
 
     config must be a config object as created by SafeConfigParser
