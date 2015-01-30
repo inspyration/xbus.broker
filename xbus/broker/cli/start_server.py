@@ -12,12 +12,14 @@ from xbus.broker.core import get_frontserver
 from xbus.broker.core import get_backserver
 from xbus.broker.core import prepare_event_loop
 
+logger = logging.getLogger(__name__)
+
 
 def signal_handler(_signal, frame):
-        logging.warning('received signal {} during frame {}'.format(
+        logger.warning('received signal {} during frame {}'.format(
             _signal,  frame)
         )
-        logging.warning('User initiated shutdown by Ctrl+C')
+        logger.warning('User initiated shutdown by Ctrl+C')
         sys.exit(0)
 
 
@@ -74,5 +76,5 @@ def start_server() -> None:
     config = get_config()
     prepare_event_loop()
     loop = asyncio.get_event_loop()
-    logging.info("Starting server main loop")
+    logger.info("Starting server main loop")
     loop.run_until_complete(start_all(config, loop=loop))

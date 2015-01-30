@@ -8,6 +8,7 @@ from configparser import ConfigParser
 
 import logging
 import logging.config
+logger = logging.getLogger(__name__)
 
 
 def get_config():
@@ -27,18 +28,20 @@ def get_config():
 
     config = ConfigParser()
     if not os.path.exists(options.config_file):
-        logging.critical('Config file: %s not found !' % options.config_file)
+        # can't log when logging system is not yet ready
+        print('Config file: %s not found !' % options.config_file)
         sys.exit(1)
 
     config.read(options.config_file)
 
     logging_configfile = os.path.abspath(config.get('logging', 'configfile'))
     if not os.path.exists(logging_configfile):
-        logging.critical(
+        # can log when logging system is not started
+        print(
             'Logging config file "{0}" not found'.format(logging_configfile)
         )
         sys.exit(1)
     logging.config.fileConfig(logging_configfile)
-    logging.info('Logging system initialized')
+    logger.info('Logging system initialized')
 
     return config
