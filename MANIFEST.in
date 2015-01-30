@@ -1,1 +1,5 @@
+include LICENSE
+include tox.ini
+include *.rst
+include *.ini-sample
 recursive-include xbus *.py
