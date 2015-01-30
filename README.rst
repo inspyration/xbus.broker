@@ -17,6 +17,14 @@ You can also find a presentation at http://bit.ly/1AYtQa6
 Install from sources
 ====================
 
+Install Python 3 Developer Version
+----------------------------------
+
+::
+
+  $ sudo apt-get install python3-dev
+
+
 Install ZMQ
 -----------
 
@@ -32,10 +40,4 @@ Install xbus.broker
 
   $ pip install xbus.broker
 
-Install Python 3 Developer Version
-----------------------------------
-
-::
-
-  $ sudo apt-get install python3-dev
 
