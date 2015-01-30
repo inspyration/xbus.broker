@@ -2,4 +2,5 @@ include LICENSE
 include tox.ini
 include *.rst
 include *.ini-sample
+recursive-include tests *.py
 recursive-include xbus *.py
