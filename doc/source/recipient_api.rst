@@ -11,6 +11,7 @@ Methods described in this document:
 - get_metadata
 - ping
 - has_clearing
+- has_immediate_reply
 - start_event
 - send_item
 - end_event
@@ -75,6 +76,21 @@ Returns: 2-element tuple:
 - URL of the data clearing database (or nothing if the feature is not
   supported). The database must respect the schema described in the
   "Data clearing" section of the Xbus documentation.
+
+
+has_immediate_reply
+-------------------
+
+Required.
+
+Called to determine whether the recipient supports the "immediate reply"
+feature.
+
+Parameters: None.
+
+Returns: 1-element tuple:
+
+- Boolean indicating whether the feature is supported.
 
 
 start_event

@@ -174,5 +174,9 @@ The reply will be sent via the return value of the "end_event" call.
 
 The "immediate reply" flag is an attribute of :ref:`event types <event_type>`.
 
-Note: Immediate replies are disallowed when more than one consumer is available
-to the emitter wishing to send events with that flag.
+Restrictions:
+
+- Immediate replies are disallowed when more than one consumer is available to
+  the emitter wishing to send events with that flag.
+- The consumer MUST announce support for the "Immediate reply" feature (see the
+  documentation about the Xbus recipient API for details).
