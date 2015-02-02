@@ -375,7 +375,7 @@ class XbusBrokerBack(XbusBrokerBase):
     def end_event(
         self, envelope_id: str, event_id: str, nb_items: int,
         immediate_reply: bool
-    ) -> tuple:
+    ) -> dict:
         """Finish an event normally.
 
         :param event_id:
@@ -384,26 +384,54 @@ class XbusBrokerBack(XbusBrokerBase):
         :param immediate_reply: Whether an immediate reply is expected; refer
         to the "Immediate reply" section of the Xbus documentation for details.
 
-        :return:
-         to be defined
+        :return: Dictionary.
+
+        Common keys:
+        - success: Boolean (true when the call was succesful).
+
+        Success keys:
+        - reply_data: Data sent back by the consumer, when using the "immediate
+        reply" feature; None otherwise.
+
+        Error keys:
+        - error_code: TBD.
+        - error_message: TBD.
         """
 
         envelope = self.envelopes[envelope_id]
         event = envelope.events.get(event_id)
         if not event:
-            res = (1, "No such event")
-            return res
+            # TODO Don't hard-code error codes.
+            # TODO Separate way of getting error strings?
+            return {
+                'error_code': 1,
+                'error_message': 'No such event',
+                'success': False,
+            }
+
+        reply_data = None
 
         for node in event.start:
             if node.is_consumer():
                 coro = envelope.consumer_end_event
             else:
                 coro = envelope.worker_end_event
-            # TODO Immediate replies: Propagate the result back to the emitter.
-            asyncio.async(coro(node, event, nb_items), loop=self.loop)
 
-        res = (0, event_id)
-        return res
+            # TODO Immediate replies: Some checks about the consumer:
+            # - only 1 per event graph.
+            # - must have announced support for the "immediate_reply" feature.
+            reply_data_future = asyncio.async(
+                coro(node, event, nb_items, immediate_reply),
+                loop=self.loop,
+            )
+
+            if immediate_reply:
+                reply_data = yield from reply_data_future
+
+        ret = {'success': True}
+        if immediate_reply:
+            ret['reply_data'] = reply_data
+        return ret
 
     @rpc.method
     @asyncio.coroutine

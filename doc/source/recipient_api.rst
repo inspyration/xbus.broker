@@ -88,9 +88,10 @@ feature.
 
 Parameters: None.
 
-Returns: 1-element tuple:
+Returns: 2-element tuple:
 
 - Boolean indicating whether the feature is supported.
+- List of event type names the recipient declares immediate reply support for.
 
 
 start_event

@@ -291,7 +291,7 @@ class XbusBrokerFront(XbusBrokerBase):
 
     @rpc.method
     @asyncio.coroutine
-    def end_event(self, token: str, envelope_id: str, event_id: str) -> bool:
+    def end_event(self, token: str, envelope_id: str, event_id: str) -> tuple:
         """Signal that all items have been sent for a given event.
 
         :param token:
@@ -307,19 +307,21 @@ class XbusBrokerFront(XbusBrokerBase):
         :param event_id:
          the UUID of the event
 
-        :return:
-         True if successful, False otherwise
+        :return: 2-element tuple:
+        - Boolean indicating success (True when succesful).
+        - Data sent back by the consumer, when using the "immediate reply"
+        feature; None otherwise.
         """
 
         emitter_json = yield from self.get_key_info(token)
         if emitter_json is None:
-            return False
+            return False, None
 
         try:
             emitter_info = json.loads(emitter_json)
             emitter_id = emitter_info['id']
         except (ValueError, SyntaxError, KeyError):
-            return False
+            return False, None
 
         try:
             envelope_info = self.envelopes[envelope_id]
@@ -327,34 +329,34 @@ class XbusBrokerFront(XbusBrokerBase):
             envelope_events = envelope_info['events']
             envelope_forward = envelope_info['forward']
         except KeyError:
-            return False
+            return False, None
 
         if emitter_id != envelope_emitter_id:
-            return False
+            return False, None
 
         try:
             event_info = envelope_events[event_id]
             event_closed = event_info.get('closed', False)
             immediate_reply = event_info['immediate_reply']
         except KeyError:
-            return False
+            return False, None
 
         if event_closed:
-            return False
+            return False, None
         event_info['closed'] = True
+
+        result = True, None
 
         if envelope_forward:
             nb_items = event_info['recv']
-            # TODO Immediate replies: Propagate the result back to the emitter.
-            asyncio.async(
+            result = asyncio.async(
                 self.backend_end_event(
                     envelope_id, event_id, nb_items, immediate_reply,
                 ),
                 loop=self.loop
             )
 
-        # Do nothing else for now.
-        return True
+        return result
 
     @rpc.method
     @asyncio.coroutine
@@ -605,7 +607,7 @@ class XbusBrokerFront(XbusBrokerBase):
     def backend_end_event(
         self, envelope_id: str, event_id: str, nb_items: int,
         immediate_reply: bool
-    ):
+    ) -> tuple:
         """Forward the end of the event to the backend.
 
         :param envelope_id:
@@ -620,28 +622,33 @@ class XbusBrokerFront(XbusBrokerBase):
         :param immediate_reply: Whether an immediate reply is expected; refer
         to the "Immediate reply" section of the Xbus documentation for details.
 
-        :return:
-         True if successful, False otherwise
+        :return: 2-element tuple:
+        - Boolean indicating success (True when succesful).
+        - Data sent back by the consumer, when using the "immediate reply"
+        feature; None otherwise.
         """
+
         envelope_info = self.envelopes[envelope_id]
         event_info = envelope_info['events'][event_id]
         while event_info['sent'] < nb_items:
             trigger_res = yield from event_info['trigger']
             if trigger_res is False:
-                return False
+                return False, None
 
-        code, msg = yield from self.backend.call.end_event(
+        call_data = self.backend.call.end_event(
             envelope_id, event_id, nb_items, immediate_reply,
         )
-        # TODO Immediate replies: Propagate the result back to the emitter.
-        if code == 0:
-            if envelope_info['trigger']._callbacks:
-                envelope_info['trigger'].set_result(True)
-                envelope_info['trigger'] = asyncio.Future(loop=self.loop)
-            return True
-        else:
+
+        if not call_data['success']:
+            # TODO Do something with errors.
             yield from self.disable_backend_forward(envelope_id)
-            return False
+            return False, None
+
+        if envelope_info['trigger']._callbacks:
+            envelope_info['trigger'].set_result(True)
+            envelope_info['trigger'] = asyncio.Future(loop=self.loop)
+
+        return True, call_data.get('reply_data') if immediate_reply else None
 
     @asyncio.coroutine
     def backend_end_envelope(self, envelope_id: str):
