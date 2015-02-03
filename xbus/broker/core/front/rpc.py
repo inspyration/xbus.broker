@@ -349,7 +349,7 @@ class XbusBrokerFront(XbusBrokerBase):
 
         if envelope_forward:
             nb_items = event_info['recv']
-            result = asyncio.async(
+            result = yield from asyncio.async(
                 self.backend_end_event(
                     envelope_id, event_id, nb_items, immediate_reply,
                 ),
@@ -635,7 +635,7 @@ class XbusBrokerFront(XbusBrokerBase):
             if trigger_res is False:
                 return False, None
 
-        call_data = self.backend.call.end_event(
+        call_data = yield from self.backend.call.end_event(
             envelope_id, event_id, nb_items, immediate_reply,
         )
 

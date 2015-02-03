@@ -426,11 +426,14 @@ class XbusBrokerBack(XbusBrokerBase):
             )
 
             if immediate_reply:
-                reply_data = yield from reply_data_future
+                success, reply_data = yield from reply_data_future
 
         ret = {'success': True}
         if immediate_reply:
-            ret['reply_data'] = reply_data
+            ret.update({
+                'reply_data': reply_data,
+                'success': success,
+            })
         return ret
 
     @rpc.method

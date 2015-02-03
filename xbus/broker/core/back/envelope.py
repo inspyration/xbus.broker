@@ -512,7 +512,14 @@ class Envelope(object):
             self.trigger.set_result(True)
             self.trigger = asyncio.Future(loop=self.loop)
 
-        return True, reply_data[0] if reply_data else None
+        # Transmit the first (and only) reply back when using the "immediate
+        # reply" feature.
+        immediate_reply_data = None
+        if immediate_reply:
+            first_reply_data = reply_data[0]
+            immediate_reply_data = first_reply_data[1]  # (success, data)
+
+        return True, immediate_reply_data
 
     @asyncio.coroutine
     def consumer_end_envelope(self, node) -> bool:
