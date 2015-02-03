@@ -459,7 +459,9 @@ class Envelope(object):
             return False
 
     @asyncio.coroutine
-    def consumer_end_event(self, node, event, nb_items: int) -> bool:
+    def consumer_end_event(
+        self, node, event, nb_items: int, immediate_reply: bool
+    ) -> tuple:
         """Forward the end of the event to the consumers.
 
         :param node:
@@ -471,12 +473,18 @@ class Envelope(object):
         :param nb_items:
          the total number of items sent by the consumer's parent
 
-        :return:
-         True if successful, False otherwise
+        :param immediate_reply: Whether an immediate reply is expected; refer
+        to the "Immediate reply" section of the Xbus documentation for details.
+
+        :return: 2-element tuple:
+        - Boolean indicating success (True when succesful).
+        - Data sent back by the consumer, when using the "immediate reply"
+        feature; None otherwise.
         """
+
         trigger_res = yield from node.wait_trigger(nb_items)
         if trigger_res is False or self.stopped:
-            return False
+            return False, None
 
         tasks = []
         for client in node.clients:
@@ -484,10 +492,14 @@ class Envelope(object):
             corobj = self.watch_call(call, self.end_event_timeout)
             tasks.append(asyncio.async(corobj, loop=self.loop))
 
+        reply_data = []
+        errors = []
         try:
-            res = yield from asyncio.gather(*tasks, loop=self.loop)
+            reply_data = yield from asyncio.gather(*tasks, loop=self.loop)
             errors = [
-                reply for success, replies in res if not success
+                reply
+                for success, replies in reply_data
+                if not success
                 for reply in replies
             ]
         except (TypeError, ValueError):
@@ -495,16 +507,25 @@ class Envelope(object):
         except asyncio.TimeoutError:
             errors = [([], "Consumer timed out.")]
 
-        if not errors:
-            node.done = True
-            if self.trigger._callbacks:
-                self.trigger.set_result(True)
-                self.trigger = asyncio.Future(loop=self.loop)
-            return True
-        else:
+        if errors:
             yield from self.log_event_errors(errors, event, node)
             asyncio.async(self.stop_envelope(), loop=self.loop)
-            return False
+            return False, None
+
+        node.done = True
+
+        if self.trigger._callbacks:
+            self.trigger.set_result(True)
+            self.trigger = asyncio.Future(loop=self.loop)
+
+        # Transmit the first (and only) reply back when using the "immediate
+        # reply" feature.
+        immediate_reply_data = None
+        if immediate_reply:
+            first_reply_data = reply_data[0]
+            immediate_reply_data = first_reply_data[1]  # (success, data)
+
+        return True, immediate_reply_data
 
     @asyncio.coroutine
     def consumer_end_envelope(self, node) -> bool:
