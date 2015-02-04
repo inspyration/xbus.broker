@@ -17,6 +17,7 @@ from xbus.broker.model.helpers import get_consumer_roles
 from xbus.broker.core.base import XbusBrokerBase
 from xbus.broker.core.back.envelope import Envelope
 from xbus.broker.core.back.recipient import Recipient
+from xbus.broker.core.features import RecipientFeature
 
 
 class BrokerBackError(Exception):
@@ -419,9 +420,37 @@ class XbusBrokerBack(XbusBrokerBase):
             else:
                 coro = envelope.worker_end_event
 
-            # TODO Immediate replies: Some checks about the consumer:
-            # - only 1 per event graph.
-            # - must have announced support for the "immediate_reply" feature.
+            # When issuing a request with an "immediate reply", ensure:
+            # - That there is only 1 consumer.
+            # - That the recipient supports the feature.
+            if immediate_reply:
+                recipients = node.recipients
+
+                if len(recipients) > 1:
+                    # TODO Don't hard-code error codes.
+                    # TODO Separate way of getting error strings?
+                    return {
+                        'error_code': 2,
+                        'error_message': (
+                            'Immediate reply with multiple recipients.'
+                        ),
+                        'success': False,
+                    }
+
+                if not recipients[0].has_feature(
+                    RecipientFeature.immediate_reply
+                ):
+                    # TODO Don't hard-code error codes.
+                    # TODO Separate way of getting error strings?
+                    return {
+                        'error_code': 3,
+                        'error_message': (
+                            'Immediate reply on a recipient with no such '
+                            'support.'
+                        ),
+                        'success': False,
+                    }
+
             reply_data_future = asyncio.async(
                 coro(node, event, nb_items, immediate_reply),
                 loop=self.loop,
