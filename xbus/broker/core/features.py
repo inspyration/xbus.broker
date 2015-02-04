@@ -1,7 +1,11 @@
 """Features Xbus recipients (workers / consumers) can support.
 """
 
-RECIPIENT_FEATURES = (
-    'clearing',
-    'immediate_reply',
+from enum import Enum
+
+RecipientFeature = Enum(
+    'RecipientFeature',
+
+    'clearing '
+    'immediate_reply '
 )
