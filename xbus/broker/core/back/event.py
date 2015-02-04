@@ -3,6 +3,7 @@ __author__ = 'faide'
 
 from xbus.broker.core.back.node import WorkerNode
 from xbus.broker.core.back.node import ConsumerNode
+from xbus.broker.core.back.recipient import Recipient
 
 
 class Event(object):
@@ -41,7 +42,9 @@ class Event(object):
         self.start = []
         self.loop = loop
 
-    def new_worker(self, node_id, role_id, client, children, is_start):
+    def new_worker(
+        self, node_id, role_id, recipient: Recipient, children, is_start
+    ):
         """Create a new :class:`.WorkerNode` instance and add it to the event.
 
         :param node_id:
@@ -50,8 +53,8 @@ class Event(object):
         :param role_id:
          the UUID of the role that represents the selected worker.
 
-        :param client:
-         the RPC client that will be used to communicate with the worker.
+        :param recipient:
+         Information about the worker.
 
         :param children:
          the UUIDs of the children nodes.
@@ -60,13 +63,13 @@ class Event(object):
          True if the node has no parent node, false otherwise.
         """
         node = WorkerNode(
-            self.envelope_id, self.event_id, node_id, role_id, client,
+            self.envelope_id, self.event_id, node_id, role_id, recipient,
             children, self.loop
         )
         self._add_node(node, is_start)
         return node
 
-    def new_consumer(self, node_id, role_ids, clients, is_start):
+    def new_consumer(self, node_id, role_ids, recipients: list, is_start):
         """Create a new :class:`.ConsumerNode` instance and add it to the
         event.
 
@@ -76,14 +79,15 @@ class Event(object):
         :param role_ids:
          the UUIDs of the roles that represent the listening consumers.
 
-        :param clients:
-         the RPC clients that will be used to communicate with each consumer.
+        :param recipients:
+         Information about the consumers.
+        :type recipients: List of Recipient objects.
 
         :param is_start:
          True if the node has no parent node, false otherwise.
         """
         node = ConsumerNode(
-            self.envelope_id, self.event_id, node_id, role_ids, clients,
+            self.envelope_id, self.event_id, node_id, role_ids, recipients,
             self.loop
         )
         self._add_node(node, is_start)

@@ -182,7 +182,7 @@ class Envelope(object):
         if self.stopped:
             return False
 
-        call = node.client.call.start_event(
+        call = node.recipient.socket.call.start_event(
             self.envelope_id, event.event_id, event.type_name
         )
         try:
@@ -239,7 +239,7 @@ class Envelope(object):
         if trigger_res is False or self.stopped:
             return False
 
-        call = node.client.call.send_item(
+        call = node.recipient.socket.call.send_item(
             self.envelope_id, event.event_id, indices, data
         )
         try:
@@ -290,7 +290,9 @@ class Envelope(object):
         if trigger_res is False or self.stopped:
             return False
 
-        call = node.client.call.end_event(self.envelope_id, event.event_id)
+        call = node.recipient.socket.call.end_event(
+            self.envelope_id, event.event_id
+        )
         try:
             res = yield from self.watch_call(call, self.end_event_timeout)
             success, reply = res
@@ -327,7 +329,7 @@ class Envelope(object):
         if self.stopped:
             return False
 
-        call = node.client.call.end_envelope(self.envelope_id)
+        call = node.recipient.socket.call.end_envelope(self.envelope_id)
         timeout = self.end_envelope_timeout
         try:
             res = yield from asyncio.wait_for(call, timeout, loop=self.loop)
@@ -353,7 +355,7 @@ class Envelope(object):
         :return:
          True if successful, False otherwise
         """
-        call = node.client.call.stop_envelope(self.envelope_id)
+        call = node.recipient.socket.call.stop_envelope(self.envelope_id)
         timeout = self.stop_envelope_timeout
         try:
             yield from asyncio.wait_for(call, timeout, loop=self.loop)
@@ -378,8 +380,8 @@ class Envelope(object):
             return False
 
         tasks = []
-        for client in node.clients:
-            call = client.call.start_event(
+        for recipient in node.recipients:
+            call = recipient.socket.call.start_event(
                 self.envelope_id, event.event_id, event.type_name
             )
             corobj = self.watch_call(call, self.start_event_timeout)
@@ -432,8 +434,8 @@ class Envelope(object):
             return False
 
         tasks = []
-        for client in node.clients:
-            call = client.call.send_item(
+        for recipient in node.recipients:
+            call = recipient.socket.call.send_item(
                 self.envelope_id, event.event_id, indices, data
             )
             corobj = self.watch_call(call, self.send_item_timeout)
@@ -487,8 +489,10 @@ class Envelope(object):
             return False, None
 
         tasks = []
-        for client in node.clients:
-            call = client.call.end_event(self.envelope_id, event.event_id)
+        for recipient in node.recipients:
+            call = recipient.socket.call.end_event(
+                self.envelope_id, event.event_id
+            )
             corobj = self.watch_call(call, self.end_event_timeout)
             tasks.append(asyncio.async(corobj, loop=self.loop))
 
@@ -541,8 +545,8 @@ class Envelope(object):
             return False
 
         tasks = []
-        for client in node.clients:
-            call = client.call.end_envelope(self.envelope_id)
+        for recipient in node.recipients:
+            call = recipient.socket.call.end_envelope(self.envelope_id)
             corobj = self.watch_call(call, self.end_envelope_timeout)
             tasks.append(asyncio.async(corobj, loop=self.loop))
 
@@ -575,8 +579,8 @@ class Envelope(object):
          True if successful, False otherwise
         """
 
-        for client in node.clients:
-            corobj = client.call.stop_envelope(self.envelope_id)
+        for recipient in node.recipients:
+            corobj = recipient.socket.call.stop_envelope(self.envelope_id)
             asyncio.async(corobj, loop=self.loop)
 
     @asyncio.coroutine

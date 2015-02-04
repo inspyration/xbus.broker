@@ -3,6 +3,8 @@ __author__ = 'jgavrel'
 
 import asyncio
 
+from xbus.broker.core.back.recipient import Recipient
+
 
 class Node(object):
     """a Node instance represents one node in the event datastructure that is
@@ -72,7 +74,7 @@ class WorkerNode(Node):
 
     def __init__(
         self, envelope_id: str, event_id: str, node_id: str, role_id: str,
-        client, children, loop=None
+        recipient: Recipient, children, loop=None
     ):
         """Create a new worker node instance
 
@@ -88,8 +90,8 @@ class WorkerNode(Node):
         :param role_id:
          the UUID of the role that represents the selected worker.
 
-        :param client:
-         the RPC client that will be used to communicate with the worker.
+        :param recipient:
+         Information about the worker.
 
         :param children:
          the UUIDs of the children nodes.
@@ -99,7 +101,7 @@ class WorkerNode(Node):
         """
         super(WorkerNode, self).__init__(envelope_id, event_id, node_id, loop)
         self.role_id = role_id
-        self.client = client
+        self.recipient = recipient
         self.children = children
 
     @staticmethod
@@ -111,7 +113,7 @@ class ConsumerNode(Node):
 
     def __init__(
         self, envelope_id: str, event_id: str, node_id: str, role_ids: list,
-        clients, loop=None
+        recipients: list, loop=None
     ):
         """create a new consumer node instance
 
@@ -127,8 +129,9 @@ class ConsumerNode(Node):
         :param role_ids:
          the UUIDs of the roles that represent the listening consumers.
 
-        :param clients:
-         the RPC clients that will be used to communicate with each consumer.
+        :param recipients:
+         Information about the consumers.
+        :type recipients: List of Recipient objects.
 
         :param loop:
          the event loop used by the backend
@@ -137,7 +140,7 @@ class ConsumerNode(Node):
             envelope_id, event_id, node_id, loop
         )
         self.role_ids = role_ids
-        self.clients = clients
+        self.recipients = recipients
         self.done = False
 
     @staticmethod

@@ -304,13 +304,15 @@ class XbusBrokerBack(XbusBrokerBase):
                 if not service_roles:
                     return False
                 role_id = service_roles.pop()
-                client = self.recipients[role_id].socket
-                event.new_worker(node_id, role_id, client, child_ids, is_start)
+                recipient = self.recipients[role_id]
+                event.new_worker(
+                    node_id, role_id, recipient, child_ids, is_start
+                )
 
             else:  # Consumers
                 role_ids = list(service_roles)
-                clients = [self.recipients[r].socket for r in service_roles]
-                event.new_consumer(node_id, role_ids, clients, is_start)
+                recipients = [self.recipients[role] for role in service_roles]
+                event.new_consumer(node_id, role_ids, recipients, is_start)
                 consumers = self.consumers[service_id]
                 inactive_consumers = consumers - service_roles
                 # TODO do something with these...
