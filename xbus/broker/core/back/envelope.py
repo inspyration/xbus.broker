@@ -271,7 +271,9 @@ class Envelope(object):
             return False
 
     @asyncio.coroutine
-    def worker_end_event(self, node, event, nb_items: int) -> bool:
+    def worker_end_event(
+        self, node, event, nb_items: int, immediate_reply: bool
+    ) -> bool:
         """Forward the end of the event to the workers.
 
         :param node:
@@ -283,12 +285,16 @@ class Envelope(object):
         :param nb_items:
          the total number of items sent by the worker's parent
 
-        :return:
-         True if successful, False otherwise
+        :param immediate_reply: Whether an immediate reply is expected; refer
+        to the "Immediate reply" section of the Xbus documentation for details.
+
+        :return: 2-element tuple:
+        - Boolean indicating success (True when succesful).
+        - Nothing (reserved for future use).
         """
         trigger_res = yield from node.wait_trigger(nb_items)
         if trigger_res is False or self.stopped:
-            return False
+            return False, None
 
         call = node.recipient.socket.call.end_event(
             self.envelope_id, event.event_id
@@ -309,12 +315,13 @@ class Envelope(object):
                 else:
                     coro = self.worker_end_event
                 asyncio.async(
-                    coro(child, event, node.sent), loop=self.loop
+                    coro(child, event, node.sent, immediate_reply),
+                    loop=self.loop
                 )
         else:
             yield from self.log_event_errors(reply, event, node)
             asyncio.async(self.stop_envelope(), loop=self.loop)
-            return False
+            return False, None
 
     @asyncio.coroutine
     def worker_end_envelope(self, node) -> bool:
