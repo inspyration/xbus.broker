@@ -195,6 +195,11 @@ class XbusBrokerFront(XbusBrokerBase):
 
         access = yield from self.check_event_access(profile_id, type_id)
         if access is False:
+            # TODO Do something better than print...
+            print(
+                'Access denied. Emitter profile: %s. Event type: %s - %s.' %
+                (profile_id, event_name, type_id)
+            )
             return ""
 
         event_id = self.new_event()
