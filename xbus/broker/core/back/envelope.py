@@ -128,7 +128,7 @@ class Envelope(object):
 
         res = yield from asyncio.gather(tasks, loop=self.loop)
         if all(res):
-            yield from self.update_envelope_state_done()
+            yield from self.__update_envelope_state_done()
 
     @asyncio.coroutine
     def stop_envelope(self, cancelled=False):
@@ -590,7 +590,7 @@ class Envelope(object):
             asyncio.async(corobj, loop=self.loop)
 
     @asyncio.coroutine
-    def update_envelope_state_done(self):
+    def __update_envelope_state_done(self):
         """Internal helper method used to log the successful execution of all
         events in the envelope.
         """
