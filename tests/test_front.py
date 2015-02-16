@@ -17,10 +17,21 @@ logging.basicConfig(level=logging.DEBUG)
 
 
 class TestAuth(unittest.TestCase):
-    def test_validate_password(self):
+    def test_validate_password_works(self):
+        """ensure that our gen_password and validate_password helpers a
+        working properly"""
         password = 'test'
         res = gen_password(password)
         assert validate_password(password, res), "Equal passwords should be ok"
+
+    def test_validate_password_false(self):
+        """ensure that our gen_password and validate_password helpers a
+        working properly"""
+        password = 'test'
+        res = gen_password(password)
+        password2 = 'test2'
+        assert not validate_password(password2, res), (
+            "Non Equal passwords should not be ok")
 
 
 class TestLogin(unittest.TestCase):
