@@ -6,7 +6,6 @@ from datetime import datetime
 from uuid import uuid4
 from sqlalchemy import func
 from xbus.broker.model.logging import envelope
-from xbus.broker.model.logging import event as event_model
 from xbus.broker.model.logging import event_error
 from xbus.broker.core.back.event import Event
 
