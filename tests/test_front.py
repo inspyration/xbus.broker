@@ -181,6 +181,9 @@ class TestNewEnvelope(TestFrontBase):
         self.envelope_id = "989def91-b42b-442e-8ab9-685b10900749"
 
     def test_new_envelope(self):
+        """test that a client is able to call the start_envelope method
+        and receive the corresponding UUID for it's envelope
+        """
 
         @asyncio.coroutine
         def gotest():
